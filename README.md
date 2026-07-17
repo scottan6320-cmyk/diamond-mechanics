@@ -1,1 +1,1 @@
-# diamond-mechanic
+# diamond-mechanics
