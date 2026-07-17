@@ -1,0 +1,9 @@
+{
+  "name": "Diamond Mechanics",
+  "short_name": "Diamond",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#07111f",
+  "theme_color": "#07111f",
+  "description": "Baseball video review and mechanics coaching tool."
+}
