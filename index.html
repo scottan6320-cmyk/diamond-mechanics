@@ -2,78 +2,67 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#07111f">
-  <title>Diamond Mechanics</title>
-  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0b1218">
+  <title>Diamond Mechanics Pose Alpha</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header class="app-header">
-    <p class="eyebrow">BASEBALL DEVELOPMENT</p>
-    <h1>Diamond Mechanics</h1>
-    <p class="subtitle">Review swings and pitching mechanics frame by frame.</p>
+  <header>
+    <p class="eyebrow">Diamond Mechanics Alpha</p>
+    <h1>Swing Pose Analysis</h1>
+    <p>Upload one side-view swing. The app tracks the hitter, draws a skeleton, and creates a preliminary movement report.</p>
   </header>
 
   <main>
     <section class="card">
-      <div class="mode-row">
-        <button class="mode active" data-mode="Hitting">Hitting</button>
-        <button class="mode" data-mode="Pitching">Pitching</button>
-      </div>
-
       <label class="upload">
-        <span>Choose or record a video</span>
-        <input id="videoInput" type="file" accept="video/*">
+        <strong>Record or choose a swing</strong>
+        <span>Best results: full body visible, camera steady, open-side view, one hitter.</span>
+        <input id="videoInput" type="file" accept="video/*" capture="environment">
       </label>
 
-      <p id="status" class="status">No video selected.</p>
-
-      <div class="video-wrap">
-        <video id="video" playsinline controls></video>
+      <div id="stage" class="stage hidden">
+        <video id="video" controls playsinline></video>
+        <canvas id="overlay"></canvas>
       </div>
 
       <div class="controls">
-        <button id="backFrame">− 1 frame</button>
-        <button id="playPause">Play / Pause</button>
-        <button id="forwardFrame">+ 1 frame</button>
+        <button id="analyzeBtn" disabled>Analyze Swing</button>
+        <button id="toggleSkeletonBtn" class="secondary" disabled>Hide Skeleton</button>
       </div>
 
-      <div class="speed-row">
-        <label for="speed">Playback speed</label>
-        <select id="speed">
-          <option value="0.25">0.25×</option>
-          <option value="0.5">0.5×</option>
-          <option value="0.75">0.75×</option>
-          <option value="1" selected>1×</option>
-        </select>
-      </div>
+      <div id="status" class="status">Pose model not loaded yet.</div>
+      <progress id="progress" value="0" max="100" class="hidden"></progress>
     </section>
 
-    <section class="card">
-      <h2>Coach notes</h2>
-      <p class="mode-label">Review type: <strong id="modeLabel">Hitting</strong></p>
-      <textarea id="notes" placeholder="Record observations, priorities, and drills..."></textarea>
-      <div class="actions">
-        <button id="saveNotes" class="primary">Save notes on this phone</button>
-        <button id="clearNotes">Clear</button>
+    <section id="report" class="card hidden">
+      <div class="scoreRow">
+        <div class="scoreRing"><span id="overallScore">--</span></div>
+        <div>
+          <p class="eyebrow">Preliminary Swing Report</p>
+          <h2 id="headline">Analysis complete</h2>
+          <p id="summary"></p>
+        </div>
       </div>
-      <p id="saveMessage" class="status"></p>
-    </section>
 
-    <section class="card">
-      <h2>Version 0.1 checklist</h2>
-      <ul>
-        <li>Upload or record video</li>
-        <li>Slow-motion playback</li>
-        <li>Frame-by-frame review</li>
-        <li>Hitting and pitching modes</li>
-        <li>Local coaching notes</li>
-      </ul>
-      <p class="next">Next version: automatic body-point tracking and joint-angle measurements.</p>
+      <div id="metrics" class="metrics"></div>
+
+      <div class="coachPlan">
+        <p class="eyebrow">Coach's Plan</p>
+        <h3 id="primaryIssue">Primary issue</h3>
+        <p><strong>Why it matters:</strong> <span id="why"></span></p>
+        <p><strong>Today's one thing:</strong> <span id="oneThing"></span></p>
+        <p><strong>Corrective drill:</strong> <span id="drill"></span></p>
+      </div>
+
+      <p class="disclaimer">
+        Alpha measurements are camera-based estimates for coaching feedback, not medical or laboratory biomechanics.
+        Inches require a future calibration step; movement is currently normalized to body size.
+      </p>
     </section>
   </main>
 
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
