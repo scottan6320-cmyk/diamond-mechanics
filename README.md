@@ -40,3 +40,16 @@ Replace the root files in the GitHub Pages repository with:
 - app.js
 
 Commit and refresh the published site.
+
+
+## iPhone replacement note
+
+This fixed package uses MediaPipe Tasks Vision 0.10.35.
+
+On GitHub mobile web, upload these files to the repository root and choose to replace the existing files:
+- app.js
+- index.html
+- styles.css
+- README.md
+
+Keep the existing manifest.webmanifest file.
