@@ -146,7 +146,7 @@ async function analyzeVideo() {
   const originalRate = video.playbackRate;
   const originalControls = video.controls;
 
-  statusEl.textContent = "Analyzing while the video plays…";
+  statusEl.textContent = "Analyzing the video frame by frame…";
 
   try {
     video.pause();
@@ -157,70 +157,50 @@ async function analyzeVideo() {
 
     await waitForVideoReady();
 
-    let lastProcessedTime = -1;
-    let finished = false;
+const sampleRate = 12;
+const sampleInterval = 1 / sampleRate;
+const runTimestampBase = performance.now();
 
-    await new Promise(async (resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        if (!finished) reject(new Error("Video playback timed out."));
-      }, Math.max(15000, stopAt * 5000));
+for (let current = 0; current < stopAt; current += sampleInterval) {
+  await seekVideoTo(current);
 
-      const finish = () => {
-        if (finished) return;
-        finished = true;
-        clearTimeout(timeoutId);
-        video.pause();
-        resolve();
-      };
+  const tracked = detectLockedHitter(
+    Math.round(runTimestampBase + current * 1000)
+  );
 
-      const processFrame = () => {
-        if (finished) return;
+  if (tracked && isReliablePose(tracked.landmarks)) {
+    const hip = midpoint(
+      tracked.landmarks[23],
+      tracked.landmarks[24]
+    );
 
-        const current = video.currentTime;
-        if (current >= stopAt || video.ended) {
-          finish();
-          return;
-        }
+    const jump = lastAcceptedHip
+      ? distance2D(hip, lastAcceptedHip)
+      : 0;
 
-        // Analyze about 12 frames per second to keep iPhone Safari responsive.
-        if (lastProcessedTime < 0 || current - lastProcessedTime >= 1 / 12) {
-          lastProcessedTime = current;
-          const tracked = detectLockedHitter(Math.round(current * 1000));
+    if (!lastAcceptedHip || jump < 0.16) {
+      frames.push({
+        time: current,
+        landmarks: tracked.landmarks,
+        world: tracked.world
+      });
 
-          if (tracked && isReliablePose(tracked.landmarks)) {
-            const hip = midpoint(tracked.landmarks[23], tracked.landmarks[24]);
-            const jump = lastAcceptedHip ? distance2D(hip, lastAcceptedHip) : 0;
+      lastAcceptedHip = hip;
+    }
+  }
 
-            if (!lastAcceptedHip || jump < 0.16) {
-              frames.push({
-                time: current,
-                landmarks: tracked.landmarks,
-                world: tracked.world
-              });
-              lastAcceptedHip = hip;
-            }
-          }
+  progress.value = Math.min(
+    100,
+    (current / stopAt) * 100
+  );
 
-          progress.value = Math.min(100, (current / stopAt) * 100);
-        }
+  await new Promise((resolve) =>
+    requestAnimationFrame(resolve)
+  );
+}
 
-        if ("requestVideoFrameCallback" in HTMLVideoElement.prototype) {
-          video.requestVideoFrameCallback(processFrame);
-        } else {
-          requestAnimationFrame(processFrame);
-        }
-      };
-
-      video.addEventListener("ended", finish, { once: true });
-
-      try {
-        await video.play();
-        processFrame();
-      } catch (error) {
-        clearTimeout(timeoutId);
-        reject(new Error("Safari blocked video playback. Tap the video play button once, pause it, then tap Analyze Swing."));
-      }
-    });
+video.pause();
+progress.value = 100;
 
     if (frames.length < 5) {
       throw new Error("Tracking quality was too low, so no score was produced.");
@@ -247,7 +227,56 @@ async function analyzeVideo() {
     progress.classList.add("hidden");
   }
 }
+function seekVideoTo(time) {
+  return new Promise((resolve, reject) => {
+    const safeTime = Math.min(
+      Math.max(0, time),
+      Math.max(0, video.duration - 0.001)
+    );
 
+    if (
+      video.readyState >= 2 &&
+      Math.abs(video.currentTime - safeTime) < 0.002
+    ) {
+      requestAnimationFrame(resolve);
+      return;
+    }
+
+    let completed = false;
+
+    const cleanup = () => {
+      video.removeEventListener("seeked", handleSeeked);
+      video.removeEventListener("error", handleError);
+      clearTimeout(timeoutId);
+    };
+
+    const handleSeeked = () => {
+      if (completed) return;
+      completed = true;
+      cleanup();
+      requestAnimationFrame(resolve);
+    };
+
+    const handleError = () => {
+      if (completed) return;
+      completed = true;
+      cleanup();
+      reject(new Error("Safari could not move through the video."));
+    };
+
+    const timeoutId = setTimeout(() => {
+      if (completed) return;
+      completed = true;
+      cleanup();
+      reject(new Error("Video frame loading timed out."));
+    }, 3000);
+
+    video.addEventListener("seeked", handleSeeked, { once: true });
+    video.addEventListener("error", handleError, { once: true });
+
+    video.currentTime = safeTime;
+  });
+}
 function waitForVideoReady() {
   if (video.readyState >= 2) return Promise.resolve();
 
