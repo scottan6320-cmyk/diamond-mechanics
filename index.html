@@ -2,67 +2,149 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  >
+
   <meta name="theme-color" content="#0b1218">
-  <title>Diamond Mechanics Pose Alpha</title>
+
+  <title>Diamond Mechanics Tracking Alpha</title>
+
   <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
   <header>
     <p class="eyebrow">Diamond Mechanics Alpha</p>
-    <h1>Swing Pose Analysis</h1>
-    <p>Upload one side-view swing. The app tracks the hitter, draws a skeleton, and creates a preliminary movement report.</p>
+
+    <h1>Body Tracking Validation</h1>
+
+    <p>
+      Upload one side-view swing and select the hitter.
+      This build evaluates the reliability of the body-tracking data.
+    </p>
   </header>
 
   <main>
     <section class="card">
       <label class="upload">
         <strong>Record or choose a swing</strong>
-        <span>Best results: full body visible, camera steady, open-side view, one hitter.</span>
-        <input id="videoInput" type="file" accept="video/*">
+
+        <span>
+          Best results: full body visible, camera steady,
+          open-side view, bright lighting and one hitter.
+        </span>
+
+        <input
+          id="videoInput"
+          type="file"
+          accept="video/*"
+        >
       </label>
 
       <div id="stage" class="stage hidden">
-        <video id="video" controls playsinline></video>
+        <video
+          id="video"
+          controls
+          playsinline
+          preload="metadata"
+        ></video>
+
         <canvas id="overlay"></canvas>
       </div>
 
       <div class="controls">
-        <button id="analyzeBtn" disabled>Analyze Swing</button>
-        <button id="toggleSkeletonBtn" class="secondary" disabled>Hide Skeleton</button>
+        <button id="analyzeBtn" disabled>
+          Analyze Tracking
+        </button>
+
+        <button
+          id="toggleSkeletonBtn"
+          class="secondary"
+          disabled
+        >
+          Hide Skeleton
+        </button>
       </div>
 
-      <div id="status" class="status">Pose model not loaded yet.</div>
-      <progress id="progress" value="0" max="100" class="hidden"></progress>
+      <div
+        id="status"
+        class="status"
+        aria-live="polite"
+      >
+        Pose model not loaded yet.
+      </div>
+
+      <progress
+        id="progress"
+        value="0"
+        max="100"
+        class="hidden"
+      ></progress>
     </section>
 
     <section id="report" class="card hidden">
+      <p class="eyebrow">Tracking Diagnostics</p>
+
+      <h2 id="headline">
+        Tracking analysis complete
+      </h2>
+
+      <p id="summary"></p>
+
       <div class="scoreRow">
-        <div class="scoreRing"><span id="overallScore">--</span></div>
+        <div class="scoreRing">
+          <span id="overallScore">--</span>
+        </div>
+
         <div>
-          <p class="eyebrow">Preliminary Swing Report</p>
-          <h2 id="headline">Analysis complete</h2>
-          <p id="summary"></p>
+          <h3>Accepted-frame rate</h3>
+
+          <p>
+            This represents tracking reliability,
+            not the quality of the hitter’s swing.
+          </p>
         </div>
       </div>
 
       <div id="metrics" class="metrics"></div>
 
       <div class="coachPlan">
-        <p class="eyebrow">Coach's Plan</p>
-        <h3 id="primaryIssue">Primary issue</h3>
-        <p><strong>Why it matters:</strong> <span id="why"></span></p>
-        <p><strong>Today's one thing:</strong> <span id="oneThing"></span></p>
-        <p><strong>Corrective drill:</strong> <span id="drill"></span></p>
+        <p class="eyebrow">Tracking Review</p>
+
+        <h3 id="primaryIssue">
+          Tracking status
+        </h3>
+
+        <p>
+          <strong>Primary failure:</strong>
+          <span id="why"></span>
+        </p>
+
+        <p>
+          <strong>Next action:</strong>
+          <span id="oneThing"></span>
+        </p>
+
+        <p>
+          <strong>Test recommendation:</strong>
+          <span id="drill"></span>
+        </p>
       </div>
 
       <p class="disclaimer">
-        Alpha measurements are camera-based estimates for coaching feedback, not medical or laboratory biomechanics.
-        Inches require a future calibration step; movement is currently normalized to body size.
+        This alpha build evaluates landmark and pose-tracking reliability.
+        It does not yet provide validated biomechanical measurements or
+        swing diagnoses.
       </p>
     </section>
   </main>
 
-  <script type="module" src="app-stable.js?v=5"></script>
+  <script
+    type="module"
+    src="app-tracking.js?v=6"
+  ></script>
 </body>
 </html>
