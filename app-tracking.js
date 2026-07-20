@@ -5,7 +5,7 @@ import {
 } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/+esm";
 
 const MODEL_URL =
-  "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
+  "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task";
 
 const videoInput = document.getElementById("videoInput");
 videoInput.removeAttribute("capture");
@@ -39,9 +39,9 @@ async function init() {
       baseOptions: { modelAssetPath: MODEL_URL, delegate: "GPU" },
       runningMode: "VIDEO",
       numPoses: 1,
-      minPoseDetectionConfidence: 0.45,
-      minPosePresenceConfidence: 0.45,
-      minTrackingConfidence: 0.45
+      minPoseDetectionConfidence: 0.70,
+      minPosePresenceConfidence: 0.70,
+      minTrackingConfidence: 0.75
     });
     statusEl.textContent = "Pose model ready. Choose a swing video.";
     analyzeBtn.disabled = false;
@@ -185,7 +185,7 @@ async function analyzeVideo() {
         // Analyze about 12 frames per second to keep iPhone Safari responsive.
         if (lastProcessedTime < 0 || current - lastProcessedTime >= 1 / 12) {
           lastProcessedTime = current;
-          const tracked = detectLockedHitter(Math.round(performance.now()));
+          const tracked = detectLockedHitter(Math.round(current * 1000));
 
           if (tracked && isReliablePose(tracked.landmarks)) {
             const hip = midpoint(tracked.landmarks[23], tracked.landmarks[24]);
