@@ -141,7 +141,7 @@ async function analyzeVideo() {
   frames = [];
   lastAcceptedHip = null;
 
-  const stopAt = Math.min(video.duration, 8);
+  const stopAt = Math.min(video.duration, 35);
   const originalMuted = video.muted;
   const originalRate = video.playbackRate;
   const originalControls = video.controls;
@@ -152,7 +152,7 @@ async function analyzeVideo() {
     video.pause();
     video.currentTime = 0;
     video.muted = true;
-    video.playbackRate = 0.5;
+    video.playbackRate = 1;
     video.controls = false;
 
     await waitForVideoReady();
@@ -269,7 +269,7 @@ function seekVideoTo(time) {
       completed = true;
       cleanup();
       reject(new Error("Video frame loading timed out."));
-    }, 3000);
+    }, 10000);
 
     video.addEventListener("seeked", handleSeeked, { once: true });
     video.addEventListener("error", handleError, { once: true });
