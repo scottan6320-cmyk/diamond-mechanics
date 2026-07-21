@@ -127,8 +127,7 @@ async function analyzeVideo() {
     statusEl.textContent = "Tap the hitter's chest first so the app analyzes the correct person.";
     return;
   }
-let shoulderPairSwapped = false;
-let hipPairSwapped = false;
+
   if (!poseLandmarker || !Number.isFinite(video.duration) || video.duration <= 0) {
     statusEl.textContent = "The video is not ready yet. Press play once, pause, then try Analyze Swing again.";
     return;
@@ -140,11 +139,8 @@ let hipPairSwapped = false;
   progress.value = 0;
   report.classList.add("hidden");
   frames = [];
-frames = [];
 lastAcceptedHip = null;
-let lastAcceptedHip = null;
-let shoulderPairSwapped = false;
-let hipPairSwapped = false;
+let previousAcceptedLandmarks = null;
 
   const stopAt = Math.min(video.duration, 35);
   const originalMuted = video.muted;
@@ -404,57 +400,18 @@ const TORSO_PAIRS = [
   [23, 24]  // hips
 ];
 
-function lockTorsoIdentity(
-  currentLandmarks,
-  currentWorld,
-  previousLandmarks
-) {
-  const correctedLandmarks = currentLandmarks.map(
-    point => ({ ...point })
-  );
+function lockTorsoIdentity(current, previous) {
+  const corrected = current.map(point => ({ ...point }));
 
-  const correctedWorld = currentWorld
-    ? currentWorld.map(point => ({ ...point }))
-    : null;
-
-  if (!previousLandmarks) {
-    return {
-      landmarks: correctedLandmarks,
-      world: correctedWorld
-    };
+  if (!previous) {
+    return corrected;
   }
 
-  const pairStates = [
-    {
-      leftIndex: 11,
-      rightIndex: 12,
-      getSwapped: () => shoulderPairSwapped,
-      setSwapped: value => {
-        shoulderPairSwapped = value;
-      }
-    },
-    {
-      leftIndex: 23,
-      rightIndex: 24,
-      getSwapped: () => hipPairSwapped,
-      setSwapped: value => {
-        hipPairSwapped = value;
-      }
-    }
-  ];
-
-  for (const pair of pairStates) {
-    const {
-      leftIndex,
-      rightIndex,
-      getSwapped,
-      setSwapped
-    } = pair;
-
-    const currentLeft = currentLandmarks[leftIndex];
-    const currentRight = currentLandmarks[rightIndex];
-    const previousLeft = previousLandmarks[leftIndex];
-    const previousRight = previousLandmarks[rightIndex];
+  for (const [leftIndex, rightIndex] of TORSO_PAIRS) {
+    const currentLeft = current[leftIndex];
+    const currentRight = current[rightIndex];
+    const previousLeft = previous[leftIndex];
+    const previousRight = previous[rightIndex];
 
     if (
       !currentLeft ||
@@ -473,42 +430,17 @@ function lockTorsoIdentity(
       distance2D(currentLeft, previousRight) +
       distance2D(currentRight, previousLeft);
 
-    let isSwapped = getSwapped();
-
     /*
-     * Enter the swapped state when swapping is clearly smoother.
-     * Exit only when keeping the reported labels is much more convincing.
+     * Swap only when the alternate identity is clearly smoother.
+     * The 0.82 margin prevents rapid back-and-forth flipping.
      */
-    if (!isSwapped && swapCost < keepCost * 0.82) {
-      isSwapped = true;
-      setSwapped(true);
-    } else if (isSwapped && keepCost < swapCost * 0.65) {
-      isSwapped = false;
-      setSwapped(false);
-    }
-
-    if (isSwapped) {
-      correctedLandmarks[leftIndex] = { ...currentRight };
-      correctedLandmarks[rightIndex] = { ...currentLeft };
-
-      if (correctedWorld) {
-        const temporaryWorld = correctedWorld[leftIndex];
-
-        correctedWorld[leftIndex] = {
-          ...correctedWorld[rightIndex]
-        };
-
-        correctedWorld[rightIndex] = {
-          ...temporaryWorld
-        };
-      }
+    if (swapCost < keepCost * 0.82) {
+      corrected[leftIndex] = { ...currentRight };
+      corrected[rightIndex] = { ...currentLeft };
     }
   }
 
-  return {
-    landmarks: correctedLandmarks,
-    world: correctedWorld
-  };
+  return corrected;
 }
 function midpoint(a, b) {
   return { x:(a.x+b.x)/2, y:(a.y+b.y)/2, z:((a.z||0)+(b.z||0))/2 };
