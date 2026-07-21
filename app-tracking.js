@@ -139,7 +139,8 @@ async function analyzeVideo() {
   progress.value = 0;
   report.classList.add("hidden");
   frames = [];
-  lastAcceptedHip = null;
+lastAcceptedHip = null;
+let previousAcceptedLandmarks = null;
 
   const stopAt = Math.min(video.duration, 35);
   const originalMuted = video.muted;
@@ -168,10 +169,16 @@ for (let current = 0; current < stopAt; current += sampleInterval) {
     Math.round(runTimestampBase + current * 1000)
   );
 
-  if (tracked && isReliablePose(tracked.landmarks)) {
+  if (tracked) {
+  const correctedLandmarks = lockTorsoIdentity(
+    tracked.landmarks,
+    previousAcceptedLandmarks
+  );
+
+  if (isReliablePose(correctedLandmarks)) {
     const hip = midpoint(
-      tracked.landmarks[23],
-      tracked.landmarks[24]
+      correctedLandmarks[23],
+      correctedLandmarks[24]
     );
 
     const jump = lastAcceptedHip
@@ -181,14 +188,18 @@ for (let current = 0; current < stopAt; current += sampleInterval) {
     if (!lastAcceptedHip || jump < 0.16) {
       frames.push({
         time: current,
-        landmarks: tracked.landmarks,
+        landmarks: correctedLandmarks,
         world: tracked.world
       });
 
       lastAcceptedHip = hip;
+
+      previousAcceptedLandmarks = correctedLandmarks.map(
+        point => ({ ...point })
+      );
     }
   }
-
+}
   progress.value = Math.min(
     100,
     (current / stopAt) * 100
@@ -384,7 +395,53 @@ function isReliablePose(points) {
 function distance2D(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
+const TORSO_PAIRS = [
+  [11, 12], // shoulders
+  [23, 24]  // hips
+];
 
+function lockTorsoIdentity(current, previous) {
+  const corrected = current.map(point => ({ ...point }));
+
+  if (!previous) {
+    return corrected;
+  }
+
+  for (const [leftIndex, rightIndex] of TORSO_PAIRS) {
+    const currentLeft = current[leftIndex];
+    const currentRight = current[rightIndex];
+    const previousLeft = previous[leftIndex];
+    const previousRight = previous[rightIndex];
+
+    if (
+      !currentLeft ||
+      !currentRight ||
+      !previousLeft ||
+      !previousRight
+    ) {
+      continue;
+    }
+
+    const keepCost =
+      distance2D(currentLeft, previousLeft) +
+      distance2D(currentRight, previousRight);
+
+    const swapCost =
+      distance2D(currentLeft, previousRight) +
+      distance2D(currentRight, previousLeft);
+
+    /*
+     * Swap only when the alternate identity is clearly smoother.
+     * The 0.82 margin prevents rapid back-and-forth flipping.
+     */
+    if (swapCost < keepCost * 0.82) {
+      corrected[leftIndex] = { ...currentRight };
+      corrected[rightIndex] = { ...currentLeft };
+    }
+  }
+
+  return corrected;
+}
 function midpoint(a, b) {
   return { x:(a.x+b.x)/2, y:(a.y+b.y)/2, z:((a.z||0)+(b.z||0))/2 };
 }
