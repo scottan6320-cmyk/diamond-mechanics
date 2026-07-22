@@ -465,19 +465,26 @@ function lockTorsoIdentity(
         distance2D(currentLeft, previousLeft) +
         distance2D(currentRight, previousRight);
 
-      const swapCost =
-        distance2D(currentLeft, previousRight) +
-        distance2D(currentRight, previousLeft);
+const swapCost =
+  distance2D(currentLeft, previousRight) +
+  distance2D(currentRight, previousLeft);
 
-      if (!nextState[stateKey] && swapCost < keepCost * 0.82) {
-        nextState[stateKey] = true;
-      } else if (
-        nextState[stateKey] &&
-        keepCost < swapCost * 0.65
-      ) {
-        nextState[stateKey] = false;
-      }
-    }
+const identityEvidence = Math.abs(keepCost - swapCost);
+
+/*
+ * Do not change identity based on tiny landmark differences
+ * while the hitter is nearly motionless in the finish.
+ */
+if (identityEvidence >= 0.025) {
+  if (!nextState[stateKey] && swapCost < keepCost * 0.82) {
+    nextState[stateKey] = true;
+  } else if (
+    nextState[stateKey] &&
+    keepCost < swapCost * 0.65
+  ) {
+    nextState[stateKey] = false;
+  }
+}
 
     if (nextState[stateKey]) {
       swapPair(correctedLandmarks, left, right);
