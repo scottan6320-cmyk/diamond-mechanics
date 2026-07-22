@@ -141,7 +141,10 @@ async function analyzeVideo() {
   frames = [];
 lastAcceptedHip = null;
 let previousAcceptedLandmarks = null;
-
+let identityState = {
+  shoulders: false,
+  hips: false
+};
   const stopAt = Math.min(video.duration, 35);
   const originalMuted = video.muted;
   const originalRate = video.playbackRate;
@@ -170,16 +173,20 @@ for (let current = 0; current < stopAt; current += sampleInterval) {
   );
 
   if (tracked) {
-  const correctedLandmarks = lockTorsoIdentity(
-    tracked.landmarks,
-    previousAcceptedLandmarks
-  );
+const correctedPose = lockTorsoIdentity(
+  tracked.landmarks,
+  tracked.world,
+  previousAcceptedLandmarks,
+  identityState
+);
 
-  if (isReliablePose(correctedLandmarks)) {
-    const hip = midpoint(
-      correctedLandmarks[23],
-      correctedLandmarks[24]
-    );
+identityState = correctedPose.state;
+
+if (isReliablePose(correctedPose.landmarks)) {
+const hip = midpoint(
+  correctedPose.landmarks[23],
+  correctedPose.landmarks[24]
+);
 
     const jump = lastAcceptedHip
       ? distance2D(hip, lastAcceptedHip)
@@ -187,16 +194,18 @@ for (let current = 0; current < stopAt; current += sampleInterval) {
 
     if (!lastAcceptedHip || jump < 0.16) {
       frames.push({
-        time: current,
-        landmarks: correctedLandmarks,
-        world: tracked.world
-      });
-
+  time: current,
+  landmarks: correctedPose.landmarks,
+  world: correctedPose.world
+});
       lastAcceptedHip = hip;
 
-      previousAcceptedLandmarks = correctedLandmarks.map(
-        point => ({ ...point })
-      );
+ previousAcceptedLandmarks = {
+  landmarks: correctedPose.landmarks.map(point => ({ ...point })),
+  world: correctedPose.world
+    ? correctedPose.world.map(point => ({ ...point }))
+    : null
+};
     }
   }
 }
@@ -395,23 +404,45 @@ function isReliablePose(points) {
 function distance2D(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
+function swapPair(points, left, right) {
+  if (!points) return;
+
+  const temp = points[left];
+  points[left] = points[right];
+  points[right] = temp;
+}
 const TORSO_PAIRS = [
-  [11, 12], // shoulders
-  [23, 24]  // hips
+  { left: 11, right: 12, stateKey: "shoulders" },
+  { left: 23, right: 24, stateKey: "hips" }
 ];
 
-function lockTorsoIdentity(current, previous) {
-  const corrected = current.map(point => ({ ...point }));
+function lockTorsoIdentity(
+  currentLandmarks,
+  currentWorld,
+  previousPose,
+  currentState
+) {
+  const correctedLandmarks = currentLandmarks.map(point => ({ ...point }));
 
-  if (!previous) {
-    return corrected;
+  const correctedWorld = currentWorld
+    ? currentWorld.map(point => ({ ...point }))
+    : null;
+
+  const nextState = { ...currentState };
+
+  if (!previousPose?.landmarks) {
+    return {
+      landmarks: correctedLandmarks,
+      world: correctedWorld,
+      state: nextState
+    };
   }
 
-  for (const [leftIndex, rightIndex] of TORSO_PAIRS) {
-    const currentLeft = current[leftIndex];
-    const currentRight = current[rightIndex];
-    const previousLeft = previous[leftIndex];
-    const previousRight = previous[rightIndex];
+  for (const { left, right, stateKey } of TORSO_PAIRS) {
+    const currentLeft = currentLandmarks[left];
+    const currentRight = currentLandmarks[right];
+    const previousLeft = previousPose.landmarks[left];
+    const previousRight = previousPose.landmarks[right];
 
     if (
       !currentLeft ||
@@ -422,25 +453,43 @@ function lockTorsoIdentity(current, previous) {
       continue;
     }
 
-    const keepCost =
-      distance2D(currentLeft, previousLeft) +
-      distance2D(currentRight, previousRight);
+    const visibility = Math.min(
+      currentLeft.visibility ?? 1,
+      currentRight.visibility ?? 1,
+      previousLeft.visibility ?? 1,
+      previousRight.visibility ?? 1
+    );
 
-    const swapCost =
-      distance2D(currentLeft, previousRight) +
-      distance2D(currentRight, previousLeft);
+    if (visibility >= 0.45) {
+      const keepCost =
+        distance2D(currentLeft, previousLeft) +
+        distance2D(currentRight, previousRight);
 
-    /*
-     * Swap only when the alternate identity is clearly smoother.
-     * The 0.82 margin prevents rapid back-and-forth flipping.
-     */
-    if (swapCost < keepCost * 0.82) {
-      corrected[leftIndex] = { ...currentRight };
-      corrected[rightIndex] = { ...currentLeft };
+      const swapCost =
+        distance2D(currentLeft, previousRight) +
+        distance2D(currentRight, previousLeft);
+
+      if (!nextState[stateKey] && swapCost < keepCost * 0.82) {
+        nextState[stateKey] = true;
+      } else if (
+        nextState[stateKey] &&
+        keepCost < swapCost * 0.65
+      ) {
+        nextState[stateKey] = false;
+      }
+    }
+
+    if (nextState[stateKey]) {
+      swapPair(correctedLandmarks, left, right);
+      swapPair(correctedWorld, left, right);
     }
   }
 
-  return corrected;
+  return {
+    landmarks: correctedLandmarks,
+    world: correctedWorld,
+    state: nextState
+  };
 }
 function midpoint(a, b) {
   return { x:(a.x+b.x)/2, y:(a.y+b.y)/2, z:((a.z||0)+(b.z||0))/2 };
