@@ -454,7 +454,8 @@ function lockTorsoIdentity(
   previousPose,
   currentState
 ) {
-  const correctedLandmarks = currentLandmarks.map(point => ({ ...point }));
+  const correctedLandmarks =
+    currentLandmarks.map(point => ({ ...point }));
 
   const correctedWorld = currentWorld
     ? currentWorld.map(point => ({ ...point }))
@@ -473,8 +474,12 @@ function lockTorsoIdentity(
   for (const { left, right, stateKey } of TORSO_PAIRS) {
     const currentLeft = currentLandmarks[left];
     const currentRight = currentLandmarks[right];
-    const previousLeft = previousPose.landmarks[left];
-    const previousRight = previousPose.landmarks[right];
+
+    const previousLeft =
+      previousPose.landmarks[left];
+
+    const previousRight =
+      previousPose.landmarks[right];
 
     if (
       !currentLeft ||
@@ -485,46 +490,93 @@ function lockTorsoIdentity(
       continue;
     }
 
-    const visibility = Math.min(
-      currentLeft.visibility ?? 1,
-      currentRight.visibility ?? 1,
-      previousLeft.visibility ?? 1,
-      previousRight.visibility ?? 1
-    );
+    const keepCost =
+      distance2D(currentLeft, previousLeft) +
+      distance2D(currentRight, previousRight);
 
-    if (visibility >= 0.45) {
-      const keepCost =
-        distance2D(currentLeft, previousLeft) +
-        distance2D(currentRight, previousRight);
+    const swapCost =
+      distance2D(currentLeft, previousRight) +
+      distance2D(currentRight, previousLeft);
 
-      const swapCost =
-        distance2D(currentLeft, previousRight) +
-        distance2D(currentRight, previousLeft);
+    /*
+     * Only switch identities when the swapped assignment
+     * is clearly closer to the previous accepted frame.
+     */
+    const shouldSwap =
+      swapCost + 0.018 < keepCost;
 
-      const identityEvidence = Math.abs(keepCost - swapCost);
+    nextState[stateKey] = shouldSwap;
 
-      /*
-       * Ignore tiny cost differences while the hitter is
-       * nearly motionless in the finish.
-       */
-      if (identityEvidence >= 0.025) {
-        if (
-          !nextState[stateKey] &&
-          swapCost < keepCost * 0.82
-        ) {
-          nextState[stateKey] = true;
-        } else if (
-          nextState[stateKey] &&
-          keepCost < swapCost * 0.65
-        ) {
-          nextState[stateKey] = false;
-        }
+    if (shouldSwap) {
+      swapPair(
+        correctedLandmarks,
+        left,
+        right
+      );
+
+      swapPair(
+        correctedWorld,
+        left,
+        right
+      );
+    }
+
+    const correctedLeft =
+      correctedLandmarks[left];
+
+    const correctedRight =
+      correctedLandmarks[right];
+
+    const leftJump =
+      distance2D(correctedLeft, previousLeft);
+
+    const rightJump =
+      distance2D(correctedRight, previousRight);
+
+    const leftVisibility =
+      correctedLeft.visibility ?? 1;
+
+    const rightVisibility =
+      correctedRight.visibility ?? 1;
+
+    /*
+     * When a shoulder or hip becomes hidden and suddenly
+     * jumps, hold its previous reliable location.
+     */
+    if (
+      leftJump > 0.075 &&
+      leftVisibility < 0.72
+    ) {
+      correctedLandmarks[left] = {
+        ...previousLeft
+      };
+
+      if (
+        correctedWorld &&
+        previousPose.world?.[left]
+      ) {
+        correctedWorld[left] = {
+          ...previousPose.world[left]
+        };
       }
     }
 
-    if (nextState[stateKey]) {
-      swapPair(correctedLandmarks, left, right);
-      swapPair(correctedWorld, left, right);
+    if (
+      rightJump > 0.075 &&
+      rightVisibility < 0.72
+    ) {
+      correctedLandmarks[right] = {
+        ...previousRight
+      };
+
+      if (
+        correctedWorld &&
+        previousPose.world?.[right]
+      ) {
+        correctedWorld[right] = {
+          ...previousPose.world[right]
+        };
+      }
     }
   }
 
