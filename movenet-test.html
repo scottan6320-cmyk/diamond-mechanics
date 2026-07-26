@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  >
+
+  <title>MoveNet Swing Tracking Test</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #0b1117;
+      color: #f4f7f9;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    main {
+      width: min(900px, 100%);
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    h1 {
+      margin-bottom: 8px;
+    }
+
+    p {
+      color: #aeb9c3;
+      line-height: 1.5;
+    }
+
+    .panel {
+      margin-top: 20px;
+      padding: 18px;
+      background: #141d25;
+      border: 1px solid #31404c;
+      border-radius: 18px;
+    }
+
+    input,
+    button {
+      font-size: 17px;
+    }
+
+    button {
+      min-height: 52px;
+      margin-top: 14px;
+      padding: 12px 20px;
+      border: 0;
+      border-radius: 12px;
+      background: #47cf73;
+      color: #07110b;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    #stage {
+      position: relative;
+      width: 100%;
+      margin-top: 18px;
+      overflow: hidden;
+      border-radius: 16px;
+      background: #000;
+    }
+
+    video {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    progress {
+      width: 100%;
+      height: 20px;
+      margin-top: 14px;
+    }
+
+    #status {
+      margin-top: 14px;
+      color: #d4dde4;
+      font-weight: 700;
+    }
+
+    #details {
+      margin-top: 12px;
+      color: #aeb9c3;
+      white-space: pre-line;
+    }
+  </style>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
+</head>
+
+<body>
+  <main>
+    <h1>MoveNet Thunder Test</h1>
+
+    <p>
+      This page tests MoveNet separately from the current MediaPipe tracker.
+      It does not change the main Diamond Mechanics app.
+    </p>
+
+    <section class="panel">
+      <input
+        id="videoInput"
+        type="file"
+        accept="video/*"
+      >
+
+      <div id="stage">
+        <video
+          id="video"
+          controls
+          playsinline
+          preload="metadata"
+        ></video>
+
+        <canvas id="overlay"></canvas>
+      </div>
+
+      <button id="analyzeBtn" disabled>
+        Analyze with MoveNet
+      </button>
+
+      <progress
+        id="progress"
+        value="0"
+        max="100"
+        hidden
+      ></progress>
+
+      <div id="status">
+        Loading MoveNet Thunder…
+      </div>
+
+      <div id="details"></div>
+    </section>
+  </main>
+
+  <script>
+    const videoInput =
+      document.getElementById("videoInput");
+
+    const video =
+      document.getElementById("video");
+
+    const canvas =
+      document.getElementById("overlay");
+
+    const ctx =
+      canvas.getContext("2d");
+
+    const analyzeBtn =
+      document.getElementById("analyzeBtn");
+
+    const progress =
+      document.getElementById("progress");
+
+    const statusEl =
+      document.getElementById("status");
+
+    const detailsEl =
+      document.getElementById("details");
+
+    let detector = null;
+    let objectUrl = null;
+    let analyzedFrames = [];
+
+    const KEYPOINT_SCORE_THRESHOLD = 0.35;
+    const SAMPLE_RATE = 12;
+
+    const CONNECTIONS = [
+      ["left_shoulder", "right_shoulder"],
+      ["left_shoulder", "left_elbow"],
+      ["left_elbow", "left_wrist"],
+      ["right_shoulder", "right_elbow"],
+      ["right_elbow", "right_wrist"],
+      ["left_shoulder", "left_hip"],
+      ["right_shoulder", "right_hip"],
+      ["left_hip", "right_hip"],
+      ["left_hip", "left_knee"],
+      ["left_knee", "left_ankle"],
+      ["right_hip", "right_knee"],
+      ["right_knee", "right_ankle"]
+    ];
+
+    const IMPORTANT_POINTS = new Set([
+      "left_shoulder",
+      "right_shoulder",
+      "left_hip",
+      "right_hip"
+    ]);
+
+    async function initializeMoveNet() {
+      try {
+        await tf.setBackend("webgl");
+        await tf.ready();
+
+        const model =
+          poseDetection.SupportedModels.MoveNet;
+
+        const detectorConfig = {
+          modelType:
+            poseDetection.movenet.modelType
+              .SINGLEPOSE_THUNDER,
+
+          enableSmoothing: true,
+
+          minPoseScore: 0.2
+        };
+
+        detector =
+          await poseDetection.createDetector(
+            model,
+            detectorConfig
+          );
+
+        statusEl.textContent =
+          "MoveNet Thunder ready. Choose a swing video.";
+
+        analyzeBtn.disabled = false;
+      } catch (error) {
+        console.error(error);
+
+        statusEl.textContent =
+          "MoveNet could not load. Refresh the page and try again.";
+      }
+    }
+
+    videoInput.addEventListener("change", () => {
+      const file = videoInput.files?.[0];
+
+      if (!file) return;
+
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+
+      objectUrl = URL.createObjectURL(file);
+      video.src = objectUrl;
+
+      analyzedFrames = [];
+      clearCanvas();
+
+      statusEl.textContent =
+        "Video ready. Tap Analyze with MoveNet.";
+
+      detailsEl.textContent = "";
+    });
+
+    video.addEventListener(
+      "loadedmetadata",
+      resizeCanvas
+    );
+
+    window.addEventListener(
+      "resize",
+      resizeCanvas
+    );
+
+    video.addEventListener("timeupdate", () => {
+      drawNearestFrame(video.currentTime);
+    });
+
+    analyzeBtn.addEventListener(
+      "click",
+      analyzeVideo
+    );
+
+    function resizeCanvas() {
+      if (!video.videoWidth || !video.videoHeight) {
+        return;
+      }
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+    }
+
+    async function analyzeVideo() {
+      if (
+        !detector ||
+        !Number.isFinite(video.duration) ||
+        video.duration <= 0
+      ) {
+        statusEl.textContent =
+          "The video is not ready yet.";
+
+        return;
+      }
+
+      analyzeBtn.disabled = true;
+      progress.hidden = false;
+      progress.value = 0;
+      analyzedFrames = [];
+      detailsEl.textContent = "";
+
+      const originalMuted = video.muted;
+      const originalControls = video.controls;
+
+      const sampleInterval = 1 / SAMPLE_RATE;
+      const stopAt = Math.min(video.duration, 35);
+
+      try {
+        video.pause();
+        video.muted = true;
+        video.controls = false;
+        video.currentTime = 0;
+
+        await waitForVideoReady();
+
+        statusEl.textContent =
+          "Analyzing with MoveNet Thunder…";
+
+        for (
+          let current = 0;
+          current < stopAt;
+          current += sampleInterval
+        ) {
+          await seekVideoTo(current);
+
+          const poses =
+            await detector.estimatePoses(
+              video,
+              {
+                flipHorizontal: false
+              },
+              Math.round(current * 1000)
+            );
+
+          const pose = poses?.[0];
+
+          if (pose?.keypoints?.length) {
+            analyzedFrames.push({
+              time: current,
+
+              keypoints: pose.keypoints.map(
+                point => ({
+                  ...point
+                })
+              )
+            });
+          }
+
+          progress.value =
+            Math.min(
+              100,
+              current / stopAt * 100
+            );
+
+          await new Promise(resolve =>
+            requestAnimationFrame(resolve)
+          );
+        }
+
+        progress.value = 100;
+
+        if (!analyzedFrames.length) {
+          throw new Error(
+            "MoveNet did not detect a pose."
+          );
+        }
+
+        const middleFrame =
+          analyzedFrames[
+            Math.floor(
+              analyzedFrames.length / 2
+            )
+          ];
+
+        video.currentTime =
+          middleFrame.time;
+
+        drawFrame(middleFrame);
+
+        const torsoConfidence =
+          calculateTorsoConfidence(
+            analyzedFrames
+          );
+
+        statusEl.textContent =
+          `MoveNet analysis complete: ` +
+          `${analyzedFrames.length} frames.`;
+
+        detailsEl.textContent =
+          `Average torso confidence: ` +
+          `${Math.round(torsoConfidence * 100)}%\n` +
+          `Watch the shoulders and hips during rotation.`;
+      } catch (error) {
+        console.error(error);
+
+        statusEl.textContent =
+          error.message;
+      } finally {
+        video.pause();
+        video.muted = originalMuted;
+        video.controls = originalControls;
+        analyzeBtn.disabled = false;
+        progress.hidden = true;
+      }
+    }
+
+    function drawNearestFrame(time) {
+      if (!analyzedFrames.length) return;
+
+      const nearest =
+        analyzedFrames.reduce(
+          (best, frame) =>
+            Math.abs(frame.time - time) <
+            Math.abs(best.time - time)
+              ? frame
+              : best
+        );
+
+      drawFrame(nearest);
+    }
+
+    function drawFrame(frame) {
+      clearCanvas();
+
+      const pointsByName =
+        new Map(
+          frame.keypoints.map(point => [
+            point.name,
+            point
+          ])
+        );
+
+      ctx.save();
+
+      ctx.lineWidth =
+        Math.max(4, canvas.width * 0.004);
+
+      ctx.strokeStyle = "#48e078";
+
+      for (
+        const [startName, endName]
+        of CONNECTIONS
+      ) {
+        const start =
+          pointsByName.get(startName);
+
+        const end =
+          pointsByName.get(endName);
+
+        if (
+          !isVisible(start) ||
+          !isVisible(end)
+        ) {
+          continue;
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(start.x, start.y);
+        ctx.lineTo(end.x, end.y);
+        ctx.stroke();
+      }
+
+      for (const point of frame.keypoints) {
+        if (!isVisible(point)) continue;
+
+        const isImportant =
+          IMPORTANT_POINTS.has(point.name);
+
+        ctx.beginPath();
+
+        ctx.arc(
+          point.x,
+          point.y,
+          isImportant ? 11 : 6,
+          0,
+          Math.PI * 2
+        );
+
+        ctx.fillStyle =
+          isImportant
+            ? "#ffd84d"
+            : "#ffffff";
+
+        ctx.fill();
+
+        if (isImportant) {
+          ctx.font =
+            `bold ${Math.max(
+              18,
+              canvas.width * 0.022
+            )}px Arial`;
+
+          ctx.fillStyle = "#ffd84d";
+
+          ctx.fillText(
+            getShortLabel(point.name),
+            point.x + 14,
+            point.y - 14
+          );
+        }
+      }
+
+      ctx.restore();
+    }
+
+    function isVisible(point) {
+      return (
+        point &&
+        (point.score ?? 0) >=
+          KEYPOINT_SCORE_THRESHOLD
+      );
+    }
+
+    function getShortLabel(name) {
+      const labels = {
+        left_shoulder: "LS",
+        right_shoulder: "RS",
+        left_hip: "LH",
+        right_hip: "RH"
+      };
+
+      return labels[name] || name;
+    }
+
+    function calculateTorsoConfidence(frames) {
+      const torsoNames = [
+        "left_shoulder",
+        "right_shoulder",
+        "left_hip",
+        "right_hip"
+      ];
+
+      const scores = [];
+
+      for (const frame of frames) {
+        const pointsByName =
+          new Map(
+            frame.keypoints.map(point => [
+              point.name,
+              point
+            ])
+          );
+
+        for (const name of torsoNames) {
+          const point =
+            pointsByName.get(name);
+
+          if (point) {
+            scores.push(point.score ?? 0);
+          }
+        }
+      }
+
+      if (!scores.length) return 0;
+
+      return (
+        scores.reduce(
+          (sum, score) => sum + score,
+          0
+        ) / scores.length
+      );
+    }
+
+    function clearCanvas() {
+      ctx.clearRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
+    }
+
+    function waitForVideoReady() {
+      if (video.readyState >= 2) {
+        return Promise.resolve();
+      }
+
+      return new Promise(
+        (resolve, reject) => {
+          const ready = () => {
+            cleanup();
+            resolve();
+          };
+
+          const fail = () => {
+            cleanup();
+
+            reject(
+              new Error(
+                "The video could not be prepared."
+              )
+            );
+          };
+
+          const cleanup = () => {
+            video.removeEventListener(
+              "loadeddata",
+              ready
+            );
+
+            video.removeEventListener(
+              "canplay",
+              ready
+            );
+
+            video.removeEventListener(
+              "error",
+              fail
+            );
+          };
+
+          video.addEventListener(
+            "loadeddata",
+            ready,
+            { once: true }
+          );
+
+          video.addEventListener(
+            "canplay",
+            ready,
+            { once: true }
+          );
+
+          video.addEventListener(
+            "error",
+            fail,
+            { once: true }
+          );
+
+          video.load();
+        }
+      );
+    }
+
+    function seekVideoTo(time) {
+      return new Promise(
+        (resolve, reject) => {
+          const safeTime =
+            Math.min(
+              Math.max(0, time),
+              Math.max(
+                0,
+                video.duration - 0.001
+              )
+            );
+
+          if (
+            video.readyState >= 2 &&
+            Math.abs(
+              video.currentTime - safeTime
+            ) < 0.002
+          ) {
+            requestAnimationFrame(resolve);
+            return;
+          }
+
+          let completed = false;
+
+          const cleanup = () => {
+            video.removeEventListener(
+              "seeked",
+              handleSeeked
+            );
+
+            video.removeEventListener(
+              "error",
+              handleError
+            );
+
+            clearTimeout(timeoutId);
+          };
+
+          const handleSeeked = () => {
+            if (completed) return;
+
+            completed = true;
+            cleanup();
+
+            requestAnimationFrame(resolve);
+          };
+
+          const handleError = () => {
+            if (completed) return;
+
+            completed = true;
+            cleanup();
+
+            reject(
+              new Error(
+                "The browser could not move through the video."
+              )
+            );
+          };
+
+          const timeoutId =
+            setTimeout(() => {
+              if (completed) return;
+
+              completed = true;
+              cleanup();
+
+              reject(
+                new Error(
+                  "Video frame loading timed out."
+                )
+              );
+            }, 10000);
+
+          video.addEventListener(
+            "seeked",
+            handleSeeked,
+            { once: true }
+          );
+
+          video.addEventListener(
+            "error",
+            handleError,
+            { once: true }
+          );
+
+          video.currentTime = safeTime;
+        }
+      );
+    }
+
+    initializeMoveNet();
+  </script>
+</body>
+</html>
