@@ -543,9 +543,76 @@ function scoreBelow(value,good,bad){
   return Math.round(clamp(100 - ((value-good)/(bad-good))*100,0,100));
 }
 
+function trimTrailingStillFrames(items) {
+  if (items.length < 8) return items;
+
+  const wristSpeeds = [];
+
+  for (let i = 1; i < items.length; i++) {
+    const previousPoints =
+      items[i - 1].world || items[i - 1].landmarks;
+
+    const currentPoints =
+      items[i].world || items[i].landmarks;
+
+    const previousWrists = midpoint(
+      previousPoints[15],
+      previousPoints[16]
+    );
+
+    const currentWrists = midpoint(
+      currentPoints[15],
+      currentPoints[16]
+    );
+
+    const timeDifference =
+      items[i].time - items[i - 1].time || 1;
+
+    wristSpeeds.push({
+      frameIndex: i,
+      speed:
+        distance(currentWrists, previousWrists) /
+        timeDifference
+    });
+  }
+
+  const peakSpeed = Math.max(
+    ...wristSpeeds.map(item => item.speed)
+  );
+
+  if (!Number.isFinite(peakSpeed) || peakSpeed <= 0) {
+    return items;
+  }
+
+  const movementThreshold = peakSpeed * 0.12;
+
+  const movingFrames = wristSpeeds.filter(
+    item => item.speed >= movementThreshold
+  );
+
+  if (!movingFrames.length) return items;
+
+  const lastMovingFrame =
+    movingFrames[movingFrames.length - 1].frameIndex;
+
+  const finishBuffer = 3;
+
+  const endingFrame = Math.min(
+    items.length,
+    lastMovingFrame + finishBuffer + 1
+  );
+
+  if (endingFrame < 5) return items;
+
+  return items.slice(0, endingFrame);
+}
+
 function calculateMetrics(items) {
-  const valid = items.filter(f => f.world);
-  const source = valid.length >= 5 ? valid : items;
+  const activeItems = trimTrailingStillFrames(items);
+
+  const valid = activeItems.filter(f => f.world);
+  const source =
+    valid.length >= 5 ? valid : activeItems;
 
   const kneeAngles = [];
   const hipAngles = [];
