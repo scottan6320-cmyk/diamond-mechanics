@@ -182,7 +182,15 @@ const correctedPose = lockTorsoIdentity(
 
 identityState = correctedPose.state;
 
-if (isReliablePose(correctedPose.landmarks)) {
+const torsoIsStable = hasStableTorso(
+  correctedPose.landmarks,
+  previousAcceptedLandmarks
+);
+
+if (
+  isReliablePose(correctedPose.landmarks) &&
+  torsoIsStable
+) {
 const hip = midpoint(
   correctedPose.landmarks[23],
   correctedPose.landmarks[24]
@@ -398,6 +406,30 @@ function isReliablePose(points) {
     height >= 0.22 &&
     width >= 0.06 &&
     lockDistance <= 0.34
+  );
+}
+
+function hasStableTorso(currentPoints, previousPose) {
+  if (!previousPose?.landmarks) return true;
+
+  const torsoIndexes = [11, 12, 23, 24];
+
+  const jumps = torsoIndexes.map(index =>
+    distance2D(
+      currentPoints[index],
+      previousPose.landmarks[index]
+    )
+  );
+
+  const largestJump = Math.max(...jumps);
+
+  const averageJump =
+    jumps.reduce((sum, value) => sum + value, 0) /
+    jumps.length;
+
+  return (
+    largestJump <= 0.10 &&
+    averageJump <= 0.06
   );
 }
 
