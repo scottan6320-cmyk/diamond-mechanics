@@ -784,50 +784,45 @@ function calculateFrontLegStability(items) {
     return {
       kneeAngle: 0,
       firmingChange: 0,
-      score: 0
+      score: 0,
+      confidence: 0
     };
   }
 
-  const wristSpeeds = items.map((frame, index) => {
-    if (index === 0) {
-      return 0;
-    }
-
-    const previousPoints =
-      items[index - 1].world ||
-      items[index - 1].landmarks;
-
-    const currentPoints =
-      frame.world ||
-      frame.landmarks;
-
-    const previousWrists = midpoint(
-      previousPoints[15],
-      previousPoints[16]
-    );
-
-    const currentWrists = midpoint(
-      currentPoints[15],
-      currentPoints[16]
-    );
-
-    const timeDifference =
-      frame.time - items[index - 1].time || 1;
-
-    return (
-      distance(currentWrists, previousWrists) /
-      timeDifference
-    );
-  });
+  /*
+   * Use the same launch and contact frames as every other
+   * swing observation.
+   */
+  const swingWindow =
+    detectSwingWindow(items);
 
   const contactIndex =
-    wristSpeeds.indexOf(
-      Math.max(...wristSpeeds)
-    );
+    swingWindow.contactIndex;
+
+  if (
+    contactIndex < 0 ||
+    contactIndex >= items.length
+  ) {
+    return {
+      kneeAngle: 0,
+      firmingChange: 0,
+      score: 0,
+      confidence: 0
+    };
+  }
 
   const contactPoints =
     items[contactIndex].world ||
     items[contactIndex].landmarks;
+
+  if (!contactPoints) {
+    return {
+      kneeAngle: 0,
+      firmingChange: 0,
+      score: 0,
+      confidence: 0
+    };
+  }
 
   const leftKneeAngle = angle(
     contactPoints[23],
@@ -843,8 +838,8 @@ function calculateFrontLegStability(items) {
 
   /*
    * The lead leg usually appears firmer than the rear leg
-   * near contact. This lets the app estimate the lead side
-   * without asking whether the hitter is right- or left-handed.
+   * near contact. This estimates the lead side without
+   * asking whether the hitter is right- or left-handed.
    */
   const leadIndexes =
     leftKneeAngle >= rightKneeAngle
@@ -859,15 +854,28 @@ function calculateFrontLegStability(items) {
           ankle: 28
         };
 
+  /*
+   * Compare the lead knee shortly after launch with the
+   * same knee at the estimated contact frame.
+   */
   const beforeContactIndex =
     Math.max(
-      0,
+      swingWindow.launchIndex,
       contactIndex - 3
     );
 
   const beforePoints =
     items[beforeContactIndex].world ||
     items[beforeContactIndex].landmarks;
+
+  if (!beforePoints) {
+    return {
+      kneeAngle: 0,
+      firmingChange: 0,
+      score: 0,
+      confidence: 0
+    };
+  }
 
   const kneeAngleBeforeContact = angle(
     beforePoints[leadIndexes.hip],
@@ -887,14 +895,20 @@ function calculateFrontLegStability(items) {
 
   const straightnessScore =
     clamp(
-      ((kneeAngleAtContact - 120) / 40) * 100,
+      (
+        (kneeAngleAtContact - 120) /
+        40
+      ) * 100,
       0,
       100
     );
 
   const firmingScore =
     clamp(
-      ((firmingChange + 5) / 20) * 100,
+      (
+        (firmingChange + 5) /
+        20
+      ) * 100,
       0,
       100
     );
@@ -909,12 +923,19 @@ function calculateFrontLegStability(items) {
 
   return {
     kneeAngle:
-      Math.round(kneeAngleAtContact),
+      Math.round(
+        kneeAngleAtContact
+      ),
 
     firmingChange:
-      Math.round(firmingChange),
+      Math.round(
+        firmingChange
+      ),
 
-    score
+    score,
+
+    confidence:
+      swingWindow.confidence
   };
 }
 
