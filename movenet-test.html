@@ -614,7 +614,7 @@
         }
       }
 
-      return corrected;
+           return corrected;
     }
 
     function drawNearestFrame(time) {
@@ -622,6 +622,13 @@
 
       const nearest =
         analyzedFrames.reduce(
+          (best, frame) =>
+            Math.abs(frame.time - time) <
+            Math.abs(best.time - time)
+              ? frame
+              : best
+        );
+
       drawFrame(nearest);
     }
 
