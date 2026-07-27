@@ -354,14 +354,22 @@
           const pose = poses?.[0];
 
           if (pose?.keypoints?.length) {
+            const previousFrame =
+              analyzedFrames.length
+                ? analyzedFrames[
+                    analyzedFrames.length - 1
+                  ]
+                : null;
+
+            const stabilizedKeypoints =
+              stabilizeTorsoIdentity(
+                pose.keypoints,
+                previousFrame?.keypoints
+              );
+
             analyzedFrames.push({
               time: current,
-
-              keypoints: pose.keypoints.map(
-                point => ({
-                  ...point
-                })
-              )
+              keypoints: stabilizedKeypoints
             });
           }
 
@@ -428,18 +436,192 @@
       }
     }
 
+    function stabilizeTorsoIdentity(
+      currentKeypoints,
+      previousKeypoints
+    ) {
+      const corrected =
+        currentKeypoints.map(
+          point => ({
+            ...point
+          })
+        );
+
+      if (!previousKeypoints) {
+        return corrected;
+      }
+
+      const currentByName =
+        new Map(
+          corrected.map(point => [
+            point.name,
+            point
+          ])
+        );
+
+      const previousByName =
+        new Map(
+          previousKeypoints.map(point => [
+            point.name,
+            point
+          ])
+        );
+
+      const torsoPairs = [
+        [
+          "left_shoulder",
+          "right_shoulder"
+        ],
+        [
+          "left_hip",
+          "right_hip"
+        ]
+      ];
+
+      for (
+        const [leftName, rightName]
+        of torsoPairs
+      ) {
+        const currentLeft =
+          currentByName.get(leftName);
+
+        const currentRight =
+          currentByName.get(rightName);
+
+        const previousLeft =
+          previousByName.get(leftName);
+
+        const previousRight =
+          previousByName.get(rightName);
+
+        if (
+          !currentLeft ||
+          !currentRight ||
+          !previousLeft ||
+          !previousRight
+        ) {
+          continue;
+        }
+
+        const keepCost =
+          Math.hypot(
+            currentLeft.x -
+              previousLeft.x,
+            currentLeft.y -
+              previousLeft.y
+          ) +
+          Math.hypot(
+            currentRight.x -
+              previousRight.x,
+            currentRight.y -
+              previousRight.y
+          );
+
+        const swapCost =
+          Math.hypot(
+            currentLeft.x -
+              previousRight.x,
+            currentLeft.y -
+              previousRight.y
+          ) +
+          Math.hypot(
+            currentRight.x -
+              previousLeft.x,
+            currentRight.y -
+              previousLeft.y
+          );
+
+        /*
+         * Swap the point locations only when
+         * the swapped assignment is clearly
+         * closer to the previous frame.
+         */
+        if (
+          swapCost + 12 <
+          keepCost
+        ) {
+          const savedLeft = {
+            x: currentLeft.x,
+            y: currentLeft.y,
+            score: currentLeft.score
+          };
+
+          currentLeft.x =
+            currentRight.x;
+
+          currentLeft.y =
+            currentRight.y;
+
+          currentLeft.score =
+            currentRight.score;
+
+          currentRight.x =
+            savedLeft.x;
+
+          currentRight.y =
+            savedLeft.y;
+
+          currentRight.score =
+            savedLeft.score;
+        }
+
+        const leftJump =
+          Math.hypot(
+            currentLeft.x -
+              previousLeft.x,
+            currentLeft.y -
+              previousLeft.y
+          );
+
+        const rightJump =
+          Math.hypot(
+            currentRight.x -
+              previousRight.x,
+            currentRight.y -
+              previousRight.y
+          );
+
+        /*
+         * If a hidden point suddenly jumps,
+         * hold the previous reliable position.
+         */
+        if (
+          leftJump > 55 &&
+          (currentLeft.score ?? 0) < 0.55
+        ) {
+          currentLeft.x =
+            previousLeft.x;
+
+          currentLeft.y =
+            previousLeft.y;
+
+          currentLeft.score =
+            previousLeft.score;
+        }
+
+        if (
+          rightJump > 55 &&
+          (currentRight.score ?? 0) < 0.55
+        ) {
+          currentRight.x =
+            previousRight.x;
+
+          currentRight.y =
+            previousRight.y;
+
+          currentRight.score =
+            previousRight.score;
+        }
+      }
+
+      return corrected;
+    }
+
     function drawNearestFrame(time) {
       if (!analyzedFrames.length) return;
 
       const nearest =
         analyzedFrames.reduce(
-          (best, frame) =>
-            Math.abs(frame.time - time) <
-            Math.abs(best.time - time)
-              ? frame
-              : best
-        );
-
       drawFrame(nearest);
     }
 
