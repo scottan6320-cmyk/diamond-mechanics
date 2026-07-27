@@ -1057,32 +1057,41 @@ function calculateMetrics(items) {
     );
 
   const frontLeg =
-    calculateFrontLegStability(
-      source
-    );
+  calculateFrontLegStability(
+    source
+  );
 
-  const metricScores = {
-    knee:
-      scoreNear(
-        kneeBend,
-        105,
-        45
-      ),
+const backSide =
+  calculateBackSideStack(
+    source
+  );
 
-    frontLeg:
-      frontLeg.score
-  };
+const metricScores = {
+  knee:
+    scoreNear(
+      kneeBend,
+      105,
+      45
+    ),
+
+  frontLeg:
+    frontLeg.score,
+
+  backSide:
+    backSide.score
+};
 
   const overall =
-    Math.round(
-      (
-        metricScores.knee +
-        metricScores.frontLeg
-      ) / 2
-    );
+  Math.round(
+    (
+      metricScores.knee +
+      metricScores.frontLeg +
+      metricScores.backSide
+    ) / 3
+  );
 
   const issues = [
-    {
+        {
       key: "frontLeg",
 
       score:
@@ -1102,8 +1111,27 @@ function calculateMetrics(items) {
     },
 
     {
-      key: "knee",
+      key: "backSide",
 
+      score:
+        metricScores.backSide,
+
+      title:
+        "Improve back-side stack",
+
+      why:
+        "The rear knee, rear hip, and head were not staying stacked as the swing approached contact.",
+
+      one:
+        "Drive the back hip forward while allowing the rear knee to work underneath the body.",
+
+      drill:
+        "Back-Side Drive Drill — 3 rounds of 5 controlled swings."
+    },
+
+    {
+      key: "knee",
+    
       score:
         metricScores.knee,
 
@@ -1130,31 +1158,41 @@ function calculateMetrics(items) {
 
     metricScores,
 
-    metrics: [
-      [
-        "Knee Bend",
+   metrics: [
+  [
+    "Knee Bend",
 
-        `${kneeBend}°`,
+    `${kneeBend}°`,
 
-        metricScores.knee,
+    metricScores.knee,
 
-        "Athletic posture throughout the swing"
-      ],
+    "Athletic posture throughout the swing"
+  ],
 
-      [
-        "Front-Leg Stability",
+  [
+    "Front-Leg Stability",
 
-        `${frontLeg.kneeAngle}°`,
+    `${frontLeg.kneeAngle}°`,
 
-        metricScores.frontLeg,
+    metricScores.frontLeg,
 
-        `${
-          frontLeg.firmingChange >= 0
-            ? "+"
-            : ""
-        }${frontLeg.firmingChange}° firming approaching contact`
-      ]
-    ],
+    `${
+      frontLeg.firmingChange >= 0
+        ? "+"
+        : ""
+    }${frontLeg.firmingChange}° firming approaching contact`
+  ],
+
+  [
+    "Back-Side Stack",
+
+    `${backSide.score}/100`,
+
+    metricScores.backSide,
+
+    "Rear knee, rear hip, and head working together near contact"
+  ]
+],
 
     issue:
       issues[0]
