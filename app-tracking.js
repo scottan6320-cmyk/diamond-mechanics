@@ -766,6 +766,182 @@ function calculateFrontLegStability(items) {
   };
 }
 
+function calculateBackSideStack(items) {
+  if (items.length < 5) {
+    return {
+      kneeToHip: 0,
+      headToHip: 0,
+      score: 0
+    };
+  }
+
+  /*
+   * Estimate contact using the frame with the fastest
+   * combined wrist movement.
+   */
+  const wristSpeeds = items.map(
+    (frame, index) => {
+      if (index === 0) {
+        return 0;
+      }
+
+      const previousPoints =
+        items[index - 1].landmarks;
+
+      const currentPoints =
+        frame.landmarks;
+
+      const previousWrists = midpoint(
+        previousPoints[15],
+        previousPoints[16]
+      );
+
+      const currentWrists = midpoint(
+        currentPoints[15],
+        currentPoints[16]
+      );
+
+      const timeDifference =
+        frame.time -
+        items[index - 1].time ||
+        1;
+
+      return (
+        distance2D(
+          currentWrists,
+          previousWrists
+        ) / timeDifference
+      );
+    }
+  );
+
+  const contactIndex =
+    wristSpeeds.indexOf(
+      Math.max(...wristSpeeds)
+    );
+
+  const points =
+    items[contactIndex].landmarks;
+
+  const leftKneeAngle = angle(
+    points[23],
+    points[25],
+    points[27]
+  );
+
+  const rightKneeAngle = angle(
+    points[24],
+    points[26],
+    points[28]
+  );
+
+  /*
+   * The straighter leg near contact is treated as the
+   * lead leg. The opposite side becomes the back side.
+   */
+  const backSide =
+    leftKneeAngle >= rightKneeAngle
+      ? {
+          hip: 24,
+          knee: 26
+        }
+      : {
+          hip: 23,
+          knee: 25
+        };
+
+  const backHip =
+    points[backSide.hip];
+
+  const backKnee =
+    points[backSide.knee];
+
+  const shoulderCenter = midpoint(
+    points[11],
+    points[12]
+  );
+
+  const hipCenter = midpoint(
+    points[23],
+    points[24]
+  );
+
+  const headCenter = midpoint(
+    points[7],
+    points[8]
+  );
+
+  /*
+   * Torso height provides a body-size reference so the
+   * measurement works with hitters at different distances.
+   */
+  const torsoHeight =
+    distance2D(
+      shoulderCenter,
+      hipCenter
+    ) || 1;
+
+  const kneeToHip =
+    Math.abs(
+      backKnee.x -
+      backHip.x
+    ) / torsoHeight;
+
+  const headToHip =
+    Math.abs(
+      headCenter.x -
+      backHip.x
+    ) / torsoHeight;
+
+  /*
+   * Smaller horizontal gaps indicate a stronger visual
+   * stack of the rear knee, rear hip, and head.
+   */
+  const kneeStackScore =
+    clamp(
+      100 -
+      (
+        kneeToHip /
+        0.55
+      ) * 100,
+      0,
+      100
+    );
+
+  const headStackScore =
+    clamp(
+      100 -
+      (
+        headToHip /
+        0.85
+      ) * 100,
+      0,
+      100
+    );
+
+  const score =
+    Math.round(
+      (
+        kneeStackScore * 0.65 +
+        headStackScore * 0.35
+      )
+    );
+
+  return {
+    kneeToHip:
+      Math.round(
+        kneeToHip * 100
+      ),
+
+    headToHip:
+      Math.round(
+        headToHip * 100
+      ),
+
+    score
+  };
+}
+
 function trimTrailingStillFrames(items) {
   if (items.length < 8) return items;
 
