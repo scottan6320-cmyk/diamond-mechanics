@@ -721,18 +721,66 @@ function calculateMetrics(items) {
   const kneeBend = Math.round(kneeAngles.reduce((a,b)=>a+b,0)/kneeAngles.length);
   const hipRotation = Math.round(wrapAngle(Math.max(...hipAngles)-Math.min(...hipAngles)));
   const shoulderRotation = Math.round(wrapAngle(Math.max(...shoulderAngles)-Math.min(...shoulderAngles)));
-  const horizontalHip = percentileRange(hipCenters.map(p=>p.x))/bodyScale;
-  const verticalHip = percentileRange(hipCenters.map(p=>p.y))/bodyScale;
-  const alignment = clamp(100 - Math.abs(hipRotation-shoulderRotation)*1.1,0,100);
-  const timeToContact = estimateTimeToContact(source);
+    const horizontalHip =
+    percentileRange(
+      hipCenters.map(point => point.x)
+    ) / bodyScale;
 
-  const metricScores = {
-    knee: scoreNear(kneeBend,105,45),
-    rotation: scoreBelow(Math.abs(105-hipRotation),15,70),
-    horizontal: scoreBelow(horizontalHip,0.10,0.55),
-    vertical: scoreBelow(verticalHip,0.08,0.40),
-    alignment: Math.round(alignment),
-    timing: scoreBelow(timeToContact,0.22,0.65)
+  const verticalHip =
+    percentileRange(
+      hipCenters.map(point => point.y)
+    ) / bodyScale;
+
+  const separationAngles =
+    hipAngles.map(
+      (hipAngle, index) =>
+        wrapAngle(
+          hipAngle - shoulderAngles[index]
+        )
+    );
+
+  const maxSeparation =
+    Math.round(
+      Math.max(...separationAngles)
+    );
+
+  const timeToContact =
+    estimateTimeToContact(source);
+
+    const metricScores = {
+    knee: scoreNear(kneeBend, 105, 45),
+
+    rotation: scoreBelow(
+      Math.abs(105 - hipRotation),
+      15,
+      70
+    ),
+
+    horizontal: scoreBelow(
+      horizontalHip,
+      0.10,
+      0.55
+    ),
+
+    vertical: scoreBelow(
+      verticalHip,
+      0.08,
+      0.40
+    ),
+
+    separation: Math.round(
+      clamp(
+        (maxSeparation / 25) * 100,
+        0,
+        100
+      )
+    ),
+
+    timing: scoreBelow(
+      timeToContact,
+      0.22,
+      0.65
+    )
   };
 
   const overall = Math.round(Object.values(metricScores).reduce((a,b)=>a+b,0)/6);
@@ -750,10 +798,20 @@ function calculateMetrics(items) {
       why:"Insufficient lower-half rotation may limit energy transfer into the bat.",
       one:"Finish with the belt buckle turned toward the pitcher.",
       drill:"Walk-Through Rotation Drill — 3 rounds of 5 swings."},
-    {key:"alignment", score:metricScores.alignment, title:"Hip-shoulder sequence needs work",
-      why:"When hips and shoulders rotate inefficiently, energy transfer and timing can suffer.",
-      one:"Let the hips begin while the shoulders stay closed a moment longer.",
-      drill:"Separation Drill — 3 rounds of 5 deliberate swings."},
+        {
+      key: "separation",
+      score: metricScores.separation,
+      title: "Limited hip-shoulder separation",
+
+      why:
+        "The hips and shoulders appeared to rotate together instead of creating stretch through the torso.",
+
+      one:
+        "Allow the hips to begin turning while keeping the chest closed for a moment longer.",
+
+      drill:
+        "Separation Drill — 3 rounds of 5 deliberate swings."
+    },
     {key:"knee", score:metricScores.knee, title:"Back-knee position",
       why:"Knee position affects posture, stability, and the hitter’s ability to rotate.",
       one:"Maintain athletic knee flex without collapsing.",
@@ -772,7 +830,12 @@ function calculateMetrics(items) {
       ["Hip Rotation",`${hipRotation}°`,metricScores.rotation,"Estimated range"],
       ["Horizontal Hip Movement",`${(horizontalHip*100).toFixed(0)}%`,metricScores.horizontal,"Relative to torso"],
       ["Vertical Hip Movement",`${(verticalHip*100).toFixed(0)}%`,metricScores.vertical,"Relative to torso"],
-      ["Hip-Shoulder Alignment",`${Math.round(alignment)}%`,metricScores.alignment,"Rotation similarity"],
+            [
+        "Maximum Hip-Shoulder Separation",
+        `${maxSeparation}°`,
+        metricScores.separation,
+        "Largest estimated difference during swing"
+      ],
       ["Time to Contact",`${timeToContact.toFixed(2)}s`,metricScores.timing,"Estimated motion window"]
     ],
     issue:issues[0]
