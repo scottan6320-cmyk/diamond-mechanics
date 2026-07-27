@@ -807,17 +807,74 @@ function renderReport(a) {
   document.getElementById("summary").textContent =
     "Only frames that passed the tracking-quality check were included.";
 
-  metricsEl.innerHTML = a.metrics.map(([name,value,score,note]) => `
-    <div class="metric ${score>=75?"good":score>=55?"warn":"bad"}">
-      <h3>${name}</h3>
-      <strong>${value}</strong>
-      <small>Score ${score}/100 • ${note}</small>
-    </div>`).join("");
+   const lowestScore =
+    Math.min(
+      ...a.metrics.map(
+        metric => metric[2]
+      )
+    );
 
-  document.getElementById("primaryIssue").textContent = a.issue.title;
-  document.getElementById("why").textContent = a.issue.why;
-  document.getElementById("oneThing").textContent = a.issue.one;
-  document.getElementById("drill").textContent = a.issue.drill;
+  metricsEl.innerHTML =
+    a.metrics.map(
+      ([name, value, score, note]) => {
+        const rating =
+          score >= 85
+            ? "Excellent"
+            : score >= 75
+              ? "Strong"
+              : score >= 55
+                ? "Developing"
+                : "Needs Work";
+
+        const isPrimaryFocus =
+          score === lowestScore;
+
+        return `
+          <div class="metric ${
+            score >= 75
+              ? "good"
+              : score >= 55
+                ? "warn"
+                : "bad"
+          }">
+            <h3>${name}</h3>
+
+            <strong>${value}</strong>
+
+            <small>
+              ${rating} • Score ${score}/100
+              <br>
+              ${note}
+              ${
+                isPrimaryFocus
+                  ? "<br><strong>← Work Here First</strong>"
+                  : ""
+              }
+            </small>
+          </div>
+        `;
+      }
+    ).join("");
+
+  document.getElementById(
+    "primaryIssue"
+  ).textContent =
+    a.issue.title;
+
+  document.getElementById(
+    "why"
+  ).textContent =
+    a.issue.why;
+
+  document.getElementById(
+    "oneThing"
+  ).textContent =
+    a.issue.one;
+
+  document.getElementById(
+    "drill"
+  ).textContent =
+    a.issue.drill;
   report.scrollIntoView({behavior:"smooth"});
 }
 
