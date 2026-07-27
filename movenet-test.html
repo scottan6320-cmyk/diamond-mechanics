@@ -698,17 +698,20 @@
         return frames;
       }
 
-      /*
-       * Keep two extra frames so the overlay
-       * shows a natural completed finish.
+           /*
+       * Stop slightly before the shoulder labels
+       * flip during the relaxed finish.
        */
-      const finishBuffer = 2;
+      const finishBuffer = -2;
 
       const finalFrameIndex =
-        Math.min(
-          frames.length,
-          finishFrameIndex +
-            finishBuffer
+        Math.max(
+          5,
+          Math.min(
+            frames.length,
+            finishFrameIndex +
+              finishBuffer
+          )
         );
 
       if (
