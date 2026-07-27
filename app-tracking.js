@@ -975,27 +975,24 @@ function calculateMetrics(items) {
     overall,
     metricScores,
     metrics:[
-      ["Knee Bend",`${kneeBend}°`,metricScores.knee,"Estimated average"],
-            [
-        "Front-Leg Stability",
-        `${frontLeg.kneeAngle}°`,
-        metricScores.frontLeg,
-        `${
-          frontLeg.firmingChange >= 0
-            ? "+"
-            : ""
-        }${frontLeg.firmingChange}° firming near contact`
-      ],
-      ["Horizontal Hip Movement",`${(horizontalHip*100).toFixed(0)}%`,metricScores.horizontal,"Relative to torso"],
-      ["Vertical Hip Movement",`${(verticalHip*100).toFixed(0)}%`,metricScores.vertical,"Relative to torso"],
-            [
-        "Maximum Hip-Shoulder Separation",
-        `${maxSeparation}°`,
-        metricScores.separation,
-        "Largest estimated difference during swing"
-      ],
-      ["Time to Contact",`${timeToContact.toFixed(2)}s`,metricScores.timing,"Estimated motion window"]
-    ],
+  [
+    "Knee Bend",
+    `${kneeBend}°`,
+    metricScores.knee,
+    "Athletic posture throughout the swing"
+  ],
+
+  [
+    "Front-Leg Stability",
+    `${frontLeg.kneeAngle}°`,
+    metricScores.frontLeg,
+    `${
+      frontLeg.firmingChange >= 0
+        ? "+"
+        : ""
+    }${frontLeg.firmingChange}° firming approaching contact`
+  ]
+],
     issue:issues[0]
   };
 }
