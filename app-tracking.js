@@ -626,6 +626,158 @@ function scoreNear(value,target,tolerance){
 function scoreBelow(value,good,bad){
   return Math.round(clamp(100 - ((value-good)/(bad-good))*100,0,100));
 }
+function detectSwingWindow(items) {
+  if (items.length < 5) {
+    return {
+      launchIndex: 0,
+      contactIndex: Math.max(0, items.length - 1),
+      finishIndex: Math.max(0, items.length - 1),
+      confidence: 0,
+      frames: items
+    };
+  }
+
+  /*
+   * Measure hand speed between every accepted frame.
+   * The midpoint between both wrists is more stable than
+   * relying on only one hand.
+   */
+  const wristSpeeds = items.map((frame, index) => {
+    if (index === 0) {
+      return 0;
+    }
+
+    const previousPoints =
+      items[index - 1].landmarks;
+
+    const currentPoints =
+      frame.landmarks;
+
+    const previousWrists = midpoint(
+      previousPoints[15],
+      previousPoints[16]
+    );
+
+    const currentWrists = midpoint(
+      currentPoints[15],
+      currentPoints[16]
+    );
+
+    const timeDifference =
+      frame.time - items[index - 1].time;
+
+    if (
+      !Number.isFinite(timeDifference) ||
+      timeDifference <= 0
+    ) {
+      return 0;
+    }
+
+    return (
+      distance2D(
+        currentWrists,
+        previousWrists
+      ) / timeDifference
+    );
+  });
+
+  const peakSpeed =
+    Math.max(...wristSpeeds);
+
+  if (
+    !Number.isFinite(peakSpeed) ||
+    peakSpeed <= 0
+  ) {
+    return {
+      launchIndex: 0,
+      contactIndex: items.length - 1,
+      finishIndex: items.length - 1,
+      confidence: 0,
+      frames: items
+    };
+  }
+
+  /*
+   * The fastest hand movement is our current estimate
+   * of the contact portion of the swing.
+   */
+  const contactIndex =
+    wristSpeeds.indexOf(peakSpeed);
+
+  /*
+   * Launch begins shortly before the hands clearly
+   * accelerate. Requiring consecutive moving frames helps
+   * prevent one noisy landmark jump from starting the swing.
+   */
+  const launchThreshold =
+    peakSpeed * 0.18;
+
+  let firstMovingIndex = -1;
+
+  for (
+    let index = 1;
+    index < contactIndex;
+    index++
+  ) {
+    const currentSpeed =
+      wristSpeeds[index];
+
+    const nextSpeed =
+      wristSpeeds[index + 1] ?? 0;
+
+    if (
+      currentSpeed >= launchThreshold &&
+      nextSpeed >= launchThreshold
+    ) {
+      firstMovingIndex = index;
+      break;
+    }
+  }
+
+  const launchIndex =
+    firstMovingIndex >= 0
+      ? Math.max(
+          0,
+          firstMovingIndex - 2
+        )
+      : Math.max(
+          0,
+          contactIndex - 4
+        );
+
+  /*
+   * Keep a small number of frames after estimated contact.
+   * Later observations can use this to evaluate extension
+   * and the beginning of the finish.
+   */
+  const finishIndex =
+    Math.min(
+      items.length - 1,
+      contactIndex + 3
+    );
+
+  const swingFrameCount =
+    contactIndex - launchIndex + 1;
+
+  const confidence =
+    swingFrameCount >= 4 &&
+    contactIndex > launchIndex
+      ? 100
+      : 50;
+
+  return {
+    launchIndex,
+    contactIndex,
+    finishIndex,
+    confidence,
+
+    frames:
+      items.slice(
+        launchIndex,
+        finishIndex + 1
+      )
+  };
+}
 
 function calculateFrontLegStability(items) {
   if (items.length < 5) {
@@ -771,85 +923,30 @@ function calculateHeadStability(items) {
     return {
       horizontalMovement: 0,
       verticalMovement: 0,
-      score: 0
+      score: 0,
+      confidence: 0
     };
   }
 
   /*
-   * Find the active swing window using wrist speed.
-   * We begin shortly before the hands accelerate and
-   * finish at the fastest wrist movement near contact.
+   * All swing observations will eventually use this same
+   * launch-to-contact timeline.
    */
-  const wristSpeeds = items.map(
-    (frame, index) => {
-      if (index === 0) {
-        return 0;
-      }
-
-      const previousPoints =
-        items[index - 1].landmarks;
-
-      const currentPoints =
-        frame.landmarks;
-
-      const previousWrists = midpoint(
-        previousPoints[15],
-        previousPoints[16]
-      );
-
-      const currentWrists = midpoint(
-        currentPoints[15],
-        currentPoints[16]
-      );
-
-      const timeDifference =
-        frame.time -
-        items[index - 1].time ||
-        1;
-
-      return (
-        distance2D(
-          currentWrists,
-          previousWrists
-        ) / timeDifference
-      );
-    }
-  );
-
-  const peakSpeed =
-    Math.max(...wristSpeeds);
-
-  const contactIndex =
-    wristSpeeds.indexOf(peakSpeed);
-
-  const movementThreshold =
-    peakSpeed * 0.18;
-
-  const firstMovingIndex =
-    wristSpeeds.findIndex(
-      speed =>
-        speed >= movementThreshold
-    );
-
-  const launchIndex =
-    firstMovingIndex >= 0
-      ? Math.max(
-          0,
-          firstMovingIndex - 2
-        )
-      : 0;
+  const swingWindow =
+    detectSwingWindow(items);
 
   const swingFrames =
     items.slice(
-      launchIndex,
-      contactIndex + 1
+      swingWindow.launchIndex,
+      swingWindow.contactIndex + 1
     );
 
   if (swingFrames.length < 3) {
     return {
       horizontalMovement: 0,
       verticalMovement: 0,
-      score: 0
+      score: 0,
+      confidence: 0
     };
   }
 
@@ -859,6 +956,32 @@ function calculateHeadStability(items) {
   for (const frame of swingFrames) {
     const points =
       frame.landmarks;
+
+    const requiredIndexes = [
+      0,
+      7,
+      8,
+      11,
+      12,
+      23,
+      24
+    ];
+
+    const hasRequiredPoints =
+      requiredIndexes.every(
+        index =>
+          points[index] &&
+          Number.isFinite(
+            points[index].x
+          ) &&
+          Number.isFinite(
+            points[index].y
+          )
+      );
+
+    if (!hasRequiredPoints) {
+      continue;
+    }
 
     const hipCenter = midpoint(
       points[23],
@@ -876,8 +999,8 @@ function calculateHeadStability(items) {
     );
 
     /*
-     * Combining the nose and ears reduces jitter from
-     * relying on one facial landmark.
+     * Combining the nose and both ears reduces movement
+     * caused by one facial landmark briefly drifting.
      */
     const headCenter = midpoint(
       points[0],
@@ -888,8 +1011,20 @@ function calculateHeadStability(items) {
       distance2D(
         shoulderCenter,
         hipCenter
-      ) || 1;
+      );
 
+    if (
+      !Number.isFinite(torsoHeight) ||
+      torsoHeight <= 0.001
+    ) {
+      continue;
+    }
+
+    /*
+     * Measure the head relative to the hips rather than
+     * relative to the camera. This helps prevent ordinary
+     * body movement from being mistaken for head instability.
+     */
     horizontalOffsets.push(
       (
         headCenter.x -
@@ -905,9 +1040,21 @@ function calculateHeadStability(items) {
     );
   }
 
+  if (
+    horizontalOffsets.length < 3 ||
+    verticalOffsets.length < 3
+  ) {
+    return {
+      horizontalMovement: 0,
+      verticalMovement: 0,
+      score: 0,
+      confidence: 0
+    };
+  }
+
   /*
-   * The percentile range ignores occasional landmark
-   * spikes and measures the hitter's normal movement.
+   * Percentile range ignores an occasional tracking spike
+   * while preserving the hitter's normal movement pattern.
    */
   const horizontalMovement =
     percentileRange(
@@ -939,6 +1086,25 @@ function calculateHeadStability(items) {
       verticalScore * 0.3
     );
 
+  /*
+   * Confidence currently describes whether we found a
+   * believable swing window and enough usable head frames.
+   * It does not describe swing quality.
+   */
+  const usableFrameRate =
+    horizontalOffsets.length /
+    swingFrames.length;
+
+  const confidence =
+    Math.round(
+      clamp(
+        swingWindow.confidence *
+        usableFrameRate,
+        0,
+        100
+      )
+    );
+
   return {
     horizontalMovement:
       Math.round(
@@ -950,7 +1116,8 @@ function calculateHeadStability(items) {
         verticalMovement * 100
       ),
 
-    score
+    score,
+    confidence
   };
 }
 
