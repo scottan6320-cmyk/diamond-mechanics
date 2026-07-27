@@ -922,54 +922,47 @@ function calculateMetrics(items) {
     )
   };
 
-  const overall = Math.round(Object.values(metricScores).reduce((a,b)=>a+b,0)/6);
+  const overall = Math.round(
+  (
+    metricScores.knee +
+    metricScores.frontLeg
+  ) / 2
+);
 
-  const issues = [
-    {key:"horizontal", score:metricScores.horizontal, title:"Excessive hip slide",
-      why:"Too much forward hip travel can reduce balance and make clean rotation harder.",
-      one:"Rotate around a stable center instead of carrying the hips toward the pitcher.",
-      drill:"Pause-at-Land Drill — 3 rounds of 5 controlled swings."},
-    {key:"vertical", score:metricScores.vertical, title:"Too much vertical hip movement",
-      why:"Large up-and-down movement can redirect energy away from efficient rotation.",
-      one:"Keep the belt line level from load through contact.",
-      drill:"Chair-Height Tee Drill — 3 rounds of 5 swings."},
-       {
-      key: "frontLeg",
-      score: metricScores.frontLeg,
-      title: "Front leg needs to firm up",
+const issues = [
+  {
+    key: "frontLeg",
+    score: metricScores.frontLeg,
 
-      why:
-        "The lead knee did not appear to create a firm base as the hitter approached contact.",
+    title: "Front leg needs to firm up",
 
-      one:
-        "Land under control, then allow the front leg to firm while the back hip comes through.",
+    why:
+      "The lead knee did not appear to create a firm base as the hitter approached contact.",
 
-      drill:
-        "Front-Leg Brace Drill — 3 rounds of 5 controlled swings."
-    },
-        {
-      key: "separation",
-      score: metricScores.separation,
-      title: "Limited hip-shoulder separation",
+    one:
+      "Land under control, then allow the front leg to firm while the back hip comes through.",
 
-      why:
-        "The hips and shoulders appeared to rotate together instead of creating stretch through the torso.",
+    drill:
+      "Front-Leg Brace Drill — 3 rounds of 5 controlled swings."
+  },
 
-      one:
-        "Allow the hips to begin turning while keeping the chest closed for a moment longer.",
+  {
+    key: "knee",
+    score: metricScores.knee,
 
-      drill:
-        "Separation Drill — 3 rounds of 5 deliberate swings."
-    },
-    {key:"knee", score:metricScores.knee, title:"Back-knee position",
-      why:"Knee position affects posture, stability, and the hitter’s ability to rotate.",
-      one:"Maintain athletic knee flex without collapsing.",
-      drill:"Hold-the-Finish Tee Drill — 3 rounds of 5 swings."},
-    {key:"timing", score:metricScores.timing, title:"Long move to contact",
-      why:"A longer movement window can make late adjustment more difficult.",
-      one:"Create a quiet load and a direct turn to the ball.",
-      drill:"Short Toss Decision Drill — 3 rounds of 5 swings."}
-  ].sort((a,b)=>a.score-b.score);
+    title: "Maintain athletic posture",
+
+    why:
+      "Maintaining athletic knee flex improves balance, posture, and efficient movement throughout the swing.",
+
+    one:
+      "Stay athletic from load through contact without standing up or collapsing.",
+
+    drill:
+      "Hold-the-Finish Tee Drill — 3 rounds of 5 swings."
+  }
+
+].sort((a,b)=>a.score-b.score);
 
   return {
     overall,
