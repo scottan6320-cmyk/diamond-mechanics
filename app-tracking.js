@@ -831,162 +831,157 @@ function trimTrailingStillFrames(items) {
 }
 
 function calculateMetrics(items) {
-  const activeItems = trimTrailingStillFrames(items);
+  const activeItems =
+    trimTrailingStillFrames(items);
 
-  const valid = activeItems.filter(f => f.world);
+  const valid =
+    activeItems.filter(
+      frame => frame.world
+    );
+
   const source =
-    valid.length >= 5 ? valid : activeItems;
+    valid.length >= 5
+      ? valid
+      : activeItems;
 
   const kneeAngles = [];
-  const hipAngles = [];
-  const shoulderAngles = [];
-  const hipCenters = [];
-  const shoulderCenters = [];
-  const bodyScales = [];
 
-  for (const f of source) {
-    const p = f.world || f.landmarks;
-    const hip = midpoint(p[23], p[24]);
-    const shoulder = midpoint(p[11], p[12]);
-    hipCenters.push(hip);
-    shoulderCenters.push(shoulder);
-    bodyScales.push(distance(hip, shoulder) + distance(shoulder, midpoint(p[7],p[8])));
-    kneeAngles.push(Math.min(angle(p[23],p[25],p[27]), angle(p[24],p[26],p[28])));
-    hipAngles.push(orientation(p[23],p[24]));
-    shoulderAngles.push(orientation(p[11],p[12]));
+  for (const frame of source) {
+    const points =
+      frame.world ||
+      frame.landmarks;
+
+    const leftKneeAngle = angle(
+      points[23],
+      points[25],
+      points[27]
+    );
+
+    const rightKneeAngle = angle(
+      points[24],
+      points[26],
+      points[28]
+    );
+
+    kneeAngles.push(
+      Math.min(
+        leftKneeAngle,
+        rightKneeAngle
+      )
+    );
   }
 
-  const bodyScale = bodyScales.reduce((a,b)=>a+b,0)/bodyScales.length || 1;
-  const kneeBend = Math.round(kneeAngles.reduce((a,b)=>a+b,0)/kneeAngles.length);
-  const hipRotation = Math.round(wrapAngle(Math.max(...hipAngles)-Math.min(...hipAngles)));
-  const shoulderRotation = Math.round(wrapAngle(Math.max(...shoulderAngles)-Math.min(...shoulderAngles)));
-    const horizontalHip =
-    percentileRange(
-      hipCenters.map(point => point.x)
-    ) / bodyScale;
-
-  const verticalHip =
-    percentileRange(
-      hipCenters.map(point => point.y)
-    ) / bodyScale;
-
-  const separationAngles =
-    hipAngles.map(
-      (hipAngle, index) =>
-        wrapAngle(
-          hipAngle - shoulderAngles[index]
-        )
-    );
-
-  const maxSeparation =
+  const kneeBend =
     Math.round(
-      Math.max(...separationAngles)
+      kneeAngles.reduce(
+        (sum, value) =>
+          sum + value,
+        0
+      ) / kneeAngles.length
     );
-
-    const timeToContact =
-    estimateTimeToContact(source);
 
   const frontLeg =
-    calculateFrontLegStability(source);
+    calculateFrontLegStability(
+      source
+    );
 
   const metricScores = {
-    knee: scoreNear(kneeBend, 105, 45),
+    knee:
+      scoreNear(
+        kneeBend,
+        105,
+        45
+      ),
 
-        frontLeg:
-      frontLeg.score,
-
-    horizontal: scoreBelow(
-      horizontalHip,
-      0.10,
-      0.55
-    ),
-
-    vertical: scoreBelow(
-      verticalHip,
-      0.08,
-      0.40
-    ),
-
-    separation: Math.round(
-      clamp(
-        (maxSeparation / 25) * 100,
-        0,
-        100
-      )
-    ),
-
-    timing: scoreBelow(
-      timeToContact,
-      0.22,
-      0.65
-    )
+    frontLeg:
+      frontLeg.score
   };
 
-  const overall = Math.round(
-  (
-    metricScores.knee +
-    metricScores.frontLeg
-  ) / 2
-);
+  const overall =
+    Math.round(
+      (
+        metricScores.knee +
+        metricScores.frontLeg
+      ) / 2
+    );
 
-const issues = [
-  {
-    key: "frontLeg",
-    score: metricScores.frontLeg,
+  const issues = [
+    {
+      key: "frontLeg",
 
-    title: "Front leg needs to firm up",
+      score:
+        metricScores.frontLeg,
 
-    why:
-      "The lead knee did not appear to create a firm base as the hitter approached contact.",
+      title:
+        "Front leg needs to firm up",
 
-    one:
-      "Land under control, then allow the front leg to firm while the back hip comes through.",
+      why:
+        "The lead knee did not appear to create a firm base as the hitter approached contact.",
 
-    drill:
-      "Front-Leg Brace Drill — 3 rounds of 5 controlled swings."
-  },
+      one:
+        "Land under control, then allow the front leg to firm while the back hip comes through.",
 
-  {
-    key: "knee",
-    score: metricScores.knee,
+      drill:
+        "Front-Leg Brace Drill — 3 rounds of 5 controlled swings."
+    },
 
-    title: "Maintain athletic posture",
+    {
+      key: "knee",
 
-    why:
-      "Maintaining athletic knee flex improves balance, posture, and efficient movement throughout the swing.",
+      score:
+        metricScores.knee,
 
-    one:
-      "Stay athletic from load through contact without standing up or collapsing.",
+      title:
+        "Maintain athletic posture",
 
-    drill:
-      "Hold-the-Finish Tee Drill — 3 rounds of 5 swings."
-  }
+      why:
+        "Maintaining athletic knee flex improves balance, posture, and efficient movement throughout the swing.",
 
-].sort((a,b)=>a.score-b.score);
+      one:
+        "Stay athletic from load through contact without standing up or collapsing.",
+
+      drill:
+        "Hold-the-Finish Tee Drill — 3 rounds of 5 swings."
+    }
+
+  ].sort(
+    (a, b) =>
+      a.score - b.score
+  );
 
   return {
     overall,
-    metricScores,
-    metrics:[
-  [
-    "Knee Bend",
-    `${kneeBend}°`,
-    metricScores.knee,
-    "Athletic posture throughout the swing"
-  ],
 
-  [
-    "Front-Leg Stability",
-    `${frontLeg.kneeAngle}°`,
-    metricScores.frontLeg,
-    `${
-      frontLeg.firmingChange >= 0
-        ? "+"
-        : ""
-    }${frontLeg.firmingChange}° firming approaching contact`
-  ]
-],
-    issue:issues[0]
+    metricScores,
+
+    metrics: [
+      [
+        "Knee Bend",
+
+        `${kneeBend}°`,
+
+        metricScores.knee,
+
+        "Athletic posture throughout the swing"
+      ],
+
+      [
+        "Front-Leg Stability",
+
+        `${frontLeg.kneeAngle}°`,
+
+        metricScores.frontLeg,
+
+        `${
+          frontLeg.firmingChange >= 0
+            ? "+"
+            : ""
+        }${frontLeg.firmingChange}° firming approaching contact`
+      ]
+    ],
+
+    issue:
+      issues[0]
   };
 }
 
