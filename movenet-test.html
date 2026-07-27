@@ -546,8 +546,8 @@
       return labels[name] || name;
     }
 
-    function trimFramesAfterSwing(frames) {
-      if (frames.length < 12) {
+       function trimFramesAfterSwing(frames) {
+      if (frames.length < 20) {
         return frames;
       }
 
@@ -558,15 +558,9 @@
         index < frames.length;
         index++
       ) {
-        const previousFrame =
-          frames[index - 1];
-
-        const currentFrame =
-          frames[index];
-
         const previousPoints =
           new Map(
-            previousFrame.keypoints.map(
+            frames[index - 1].keypoints.map(
               point => [
                 point.name,
                 point
@@ -576,7 +570,7 @@
 
         const currentPoints =
           new Map(
-            currentFrame.keypoints.map(
+            frames[index].keypoints.map(
               point => [
                 point.name,
                 point
@@ -602,6 +596,7 @@
           !currentLeft ||
           !currentRight
         ) {
+          wristMovement.push(0);
           continue;
         }
 
@@ -633,31 +628,19 @@
             ) / 2
         };
 
-        const movement =
+        wristMovement.push(
           Math.hypot(
             currentHands.x -
               previousHands.x,
 
             currentHands.y -
               previousHands.y
-          );
-
-        wristMovement.push({
-          frameIndex: index,
-          movement
-        });
-      }
-
-      if (!wristMovement.length) {
-        return frames;
+          )
+        );
       }
 
       const peakMovement =
-        Math.max(
-          ...wristMovement.map(
-            item => item.movement
-          )
-        );
+        Math.max(...wristMovement);
 
       if (
         !Number.isFinite(peakMovement) ||
@@ -666,43 +649,68 @@
         return frames;
       }
 
-      const activeThreshold =
-        peakMovement * 0.14;
-
-      const activeFrames =
-        wristMovement.filter(
-          item =>
-            item.movement >=
-            activeThreshold
+      const peakIndex =
+        wristMovement.indexOf(
+          peakMovement
         );
 
-      if (!activeFrames.length) {
+      /*
+       * After the fastest part of the swing,
+       * look for a sustained period where the
+       * hands have nearly stopped.
+       */
+      const stillThreshold =
+        peakMovement * 0.08;
+
+      const stillFramesRequired = 8;
+
+      let stillFrameCount = 0;
+      let finishFrameIndex = null;
+
+      for (
+        let index = peakIndex + 1;
+        index < wristMovement.length;
+        index++
+      ) {
+        if (
+          wristMovement[index] <=
+          stillThreshold
+        ) {
+          stillFrameCount++;
+
+          if (
+            stillFrameCount >=
+            stillFramesRequired
+          ) {
+            finishFrameIndex =
+              index -
+              stillFramesRequired +
+              2;
+
+            break;
+          }
+        } else {
+          stillFrameCount = 0;
+        }
+      }
+
+      if (finishFrameIndex === null) {
         return frames;
       }
 
-      const lastActiveFrame =
-        activeFrames[
-          activeFrames.length - 1
-        ].frameIndex;
-
       /*
-       * Keep a few additional frames so the
-       * completed finish remains visible.
+       * Keep two extra frames so the overlay
+       * shows a natural completed finish.
        */
-      const finishBuffer = 5;
+      const finishBuffer = 2;
 
       const finalFrameIndex =
         Math.min(
           frames.length,
-          lastActiveFrame +
-            finishBuffer +
-            1
+          finishFrameIndex +
+            finishBuffer
         );
 
-      /*
-       * Do not trim unless at least four
-       * unnecessary ending frames exist.
-       */
       if (
         frames.length -
           finalFrameIndex < 4
