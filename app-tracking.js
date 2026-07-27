@@ -802,10 +802,9 @@ function renderReport(a) {
   document.querySelector(".scoreRing").style.background =
     `conic-gradient(${a.overall>=75?"#45c86c":a.overall>=55?"#ff9827":"#ff4545"} ${a.overall*3.6}deg,#35434d 0deg)`;
   document.getElementById("headline").textContent =
-    a.overall >= 75 ? "Strong movement profile" :
-    a.overall >= 55 ? "Useful starting point" : "Clear opportunity to improve";
-  document.getElementById("summary").textContent =
-    "Only frames that passed the tracking-quality check were included.";
+    `Primary Focus: ${a.issue.title}`;
+   document.getElementById("summary").textContent =
+    `The swing was analyzed using ${frames.length} accepted tracking frames. Your strongest opportunity for improvement is "${a.issue.title}".`;
 
    const lowestScore =
     Math.min(
