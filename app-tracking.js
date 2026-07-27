@@ -766,18 +766,19 @@ function calculateFrontLegStability(items) {
   };
 }
 
-function calculateBackSideStack(items) {
+function calculateHeadStability(items) {
   if (items.length < 5) {
     return {
-      kneeToHip: 0,
-      headToHip: 0,
+      horizontalMovement: 0,
+      verticalMovement: 0,
       score: 0
     };
   }
 
   /*
-   * Estimate contact using the frame with the fastest
-   * combined wrist movement.
+   * Find the active swing window using wrist speed.
+   * We begin shortly before the hands accelerate and
+   * finish at the fastest wrist movement near contact.
    */
   const wristSpeeds = items.map(
     (frame, index) => {
@@ -815,127 +816,138 @@ function calculateBackSideStack(items) {
     }
   );
 
+  const peakSpeed =
+    Math.max(...wristSpeeds);
+
   const contactIndex =
-    wristSpeeds.indexOf(
-      Math.max(...wristSpeeds)
+    wristSpeeds.indexOf(peakSpeed);
+
+  const movementThreshold =
+    peakSpeed * 0.18;
+
+  const firstMovingIndex =
+    wristSpeeds.findIndex(
+      speed =>
+        speed >= movementThreshold
     );
 
-  const points =
-    items[contactIndex].landmarks;
+  const launchIndex =
+    firstMovingIndex >= 0
+      ? Math.max(
+          0,
+          firstMovingIndex - 2
+        )
+      : 0;
 
-  const leftKneeAngle = angle(
-    points[23],
-    points[25],
-    points[27]
-  );
-
-  const rightKneeAngle = angle(
-    points[24],
-    points[26],
-    points[28]
-  );
-
-  /*
-   * The straighter leg near contact is treated as the
-   * lead leg. The opposite side becomes the back side.
-   */
-  const backSide =
-    leftKneeAngle >= rightKneeAngle
-      ? {
-          hip: 24,
-          knee: 26
-        }
-      : {
-          hip: 23,
-          knee: 25
-        };
-
-  const backHip =
-    points[backSide.hip];
-
-  const backKnee =
-    points[backSide.knee];
-
-  const shoulderCenter = midpoint(
-    points[11],
-    points[12]
-  );
-
-  const hipCenter = midpoint(
-    points[23],
-    points[24]
-  );
-
-  const headCenter = midpoint(
-    points[7],
-    points[8]
-  );
-
-  /*
-   * Torso height provides a body-size reference so the
-   * measurement works with hitters at different distances.
-   */
-  const torsoHeight =
-    distance2D(
-      shoulderCenter,
-      hipCenter
-    ) || 1;
-
-  const kneeToHip =
-    Math.abs(
-      backKnee.x -
-      backHip.x
-    ) / torsoHeight;
-
-  const headToHip =
-    Math.abs(
-      headCenter.x -
-      backHip.x
-    ) / torsoHeight;
-
-  /*
-   * Smaller horizontal gaps indicate a stronger visual
-   * stack of the rear knee, rear hip, and head.
-   */
-  const kneeStackScore =
-    clamp(
-      100 -
-      (
-        kneeToHip /
-        0.55
-      ) * 100,
-      0,
-      100
+  const swingFrames =
+    items.slice(
+      launchIndex,
+      contactIndex + 1
     );
 
-  const headStackScore =
-    clamp(
-      100 -
+  if (swingFrames.length < 3) {
+    return {
+      horizontalMovement: 0,
+      verticalMovement: 0,
+      score: 0
+    };
+  }
+
+  const horizontalOffsets = [];
+  const verticalOffsets = [];
+
+  for (const frame of swingFrames) {
+    const points =
+      frame.landmarks;
+
+    const hipCenter = midpoint(
+      points[23],
+      points[24]
+    );
+
+    const shoulderCenter = midpoint(
+      points[11],
+      points[12]
+    );
+
+    const earCenter = midpoint(
+      points[7],
+      points[8]
+    );
+
+    /*
+     * Combining the nose and ears reduces jitter from
+     * relying on one facial landmark.
+     */
+    const headCenter = midpoint(
+      points[0],
+      earCenter
+    );
+
+    const torsoHeight =
+      distance2D(
+        shoulderCenter,
+        hipCenter
+      ) || 1;
+
+    horizontalOffsets.push(
       (
-        headToHip /
-        0.85
-      ) * 100,
-      0,
-      100
+        headCenter.x -
+        hipCenter.x
+      ) / torsoHeight
+    );
+
+    verticalOffsets.push(
+      (
+        headCenter.y -
+        hipCenter.y
+      ) / torsoHeight
+    );
+  }
+
+  /*
+   * The percentile range ignores occasional landmark
+   * spikes and measures the hitter's normal movement.
+   */
+  const horizontalMovement =
+    percentileRange(
+      horizontalOffsets
+    );
+
+  const verticalMovement =
+    percentileRange(
+      verticalOffsets
+    );
+
+  const horizontalScore =
+    scoreBelow(
+      horizontalMovement,
+      0.08,
+      0.35
+    );
+
+  const verticalScore =
+    scoreBelow(
+      verticalMovement,
+      0.08,
+      0.30
     );
 
   const score =
     Math.round(
-      (
-        kneeStackScore * 0.65 +
-        headStackScore * 0.35
-      )
+      horizontalScore * 0.7 +
+      verticalScore * 0.3
     );
 
   return {
-    kneeToHip:
+    horizontalMovement:
       Math.round(
-        kneeToHip * 100
+        horizontalMovement * 100
       ),
 
-    headToHip:
+    verticalMovement:
       Math.round(
-        headToHip * 100
+        verticalMovement * 100
       ),
 
     score
@@ -1057,41 +1069,60 @@ function calculateMetrics(items) {
     );
 
   const frontLeg =
-  calculateFrontLegStability(
-    source
-  );
+    calculateFrontLegStability(
+      source
+    );
 
-const backSide =
-  calculateBackSideStack(
-    source
-  );
+  const headStability =
+    calculateHeadStability(
+      activeItems
+    );
 
-const metricScores = {
-  knee:
-    scoreNear(
-      kneeBend,
-      105,
-      45
-    ),
+  const metricScores = {
+    knee:
+      scoreNear(
+        kneeBend,
+        105,
+        45
+      ),
 
-  frontLeg:
-    frontLeg.score,
+    frontLeg:
+      frontLeg.score,
 
-  backSide:
-    backSide.score
-};
+    head:
+      headStability.score
+  };
 
   const overall =
-  Math.round(
-    (
-      metricScores.knee +
-      metricScores.frontLeg +
-      metricScores.backSide
-    ) / 3
-  );
+    Math.round(
+      (
+        metricScores.knee +
+        metricScores.frontLeg +
+        metricScores.head
+      ) / 3
+    );
 
   const issues = [
-        {
+    {
+      key: "head",
+
+      score:
+        metricScores.head,
+
+      title:
+        "Keep the head centered",
+
+      why:
+        "Excessive head movement can change the hitter's view of the ball and reduce balance and consistent contact.",
+
+      one:
+        "Allow the body to rotate underneath a quiet, centered head.",
+
+      drill:
+        "Head-Stability Tee Drill — 3 rounds of 5 swings while holding the finish."
+    },
+
+    {
       key: "frontLeg",
 
       score:
@@ -1111,27 +1142,8 @@ const metricScores = {
     },
 
     {
-      key: "backSide",
-
-      score:
-        metricScores.backSide,
-
-      title:
-        "Improve back-side stack",
-
-      why:
-        "The rear knee, rear hip, and head were not staying stacked as the swing approached contact.",
-
-      one:
-        "Drive the back hip forward while allowing the rear knee to work underneath the body.",
-
-      drill:
-        "Back-Side Drive Drill — 3 rounds of 5 controlled swings."
-    },
-
-    {
       key: "knee",
-    
+
       score:
         metricScores.knee,
 
@@ -1147,7 +1159,6 @@ const metricScores = {
       drill:
         "Hold-the-Finish Tee Drill — 3 rounds of 5 swings."
     }
-
   ].sort(
     (a, b) =>
       a.score - b.score
@@ -1158,41 +1169,41 @@ const metricScores = {
 
     metricScores,
 
-   metrics: [
-  [
-    "Knee Bend",
+    metrics: [
+      [
+        "Head Stability",
 
-    `${kneeBend}°`,
+        `${headStability.horizontalMovement}%`,
 
-    metricScores.knee,
+        metricScores.head,
 
-    "Athletic posture throughout the swing"
-  ],
+        `${headStability.horizontalMovement}% horizontal and ${headStability.verticalMovement}% vertical movement from launch through contact`
+      ],
 
-  [
-    "Front-Leg Stability",
+      [
+        "Knee Bend",
 
-    `${frontLeg.kneeAngle}°`,
+        `${kneeBend}°`,
 
-    metricScores.frontLeg,
+        metricScores.knee,
 
-    `${
-      frontLeg.firmingChange >= 0
-        ? "+"
-        : ""
-    }${frontLeg.firmingChange}° firming approaching contact`
-  ],
+        "Athletic posture throughout the swing"
+      ],
 
-  [
-    "Back-Side Stack",
+      [
+        "Front-Leg Stability",
 
-    `${backSide.score}/100`,
+        `${frontLeg.kneeAngle}°`,
 
-    metricScores.backSide,
+        metricScores.frontLeg,
 
-    "Rear knee, rear hip, and head working together near contact"
-  ]
-],
+        `${
+          frontLeg.firmingChange >= 0
+            ? "+"
+            : ""
+        }${frontLeg.firmingChange}° firming approaching contact`
+      ]
+    ],
 
     issue:
       issues[0]
