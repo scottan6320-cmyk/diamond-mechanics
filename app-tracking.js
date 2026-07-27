@@ -627,6 +627,145 @@ function scoreBelow(value,good,bad){
   return Math.round(clamp(100 - ((value-good)/(bad-good))*100,0,100));
 }
 
+function calculateFrontLegStability(items) {
+  if (items.length < 5) {
+    return {
+      kneeAngle: 0,
+      firmingChange: 0,
+      score: 0
+    };
+  }
+
+  const wristSpeeds = items.map((frame, index) => {
+    if (index === 0) {
+      return 0;
+    }
+
+    const previousPoints =
+      items[index - 1].world ||
+      items[index - 1].landmarks;
+
+    const currentPoints =
+      frame.world ||
+      frame.landmarks;
+
+    const previousWrists = midpoint(
+      previousPoints[15],
+      previousPoints[16]
+    );
+
+    const currentWrists = midpoint(
+      currentPoints[15],
+      currentPoints[16]
+    );
+
+    const timeDifference =
+      frame.time - items[index - 1].time || 1;
+
+    return (
+      distance(currentWrists, previousWrists) /
+      timeDifference
+    );
+  });
+
+  const contactIndex =
+    wristSpeeds.indexOf(
+      Math.max(...wristSpeeds)
+    );
+
+  const contactPoints =
+    items[contactIndex].world ||
+    items[contactIndex].landmarks;
+
+  const leftKneeAngle = angle(
+    contactPoints[23],
+    contactPoints[25],
+    contactPoints[27]
+  );
+
+  const rightKneeAngle = angle(
+    contactPoints[24],
+    contactPoints[26],
+    contactPoints[28]
+  );
+
+  /*
+   * The lead leg usually appears firmer than the rear leg
+   * near contact. This lets the app estimate the lead side
+   * without asking whether the hitter is right- or left-handed.
+   */
+  const leadIndexes =
+    leftKneeAngle >= rightKneeAngle
+      ? {
+          hip: 23,
+          knee: 25,
+          ankle: 27
+        }
+      : {
+          hip: 24,
+          knee: 26,
+          ankle: 28
+        };
+
+  const beforeContactIndex =
+    Math.max(
+      0,
+      contactIndex - 3
+    );
+
+  const beforePoints =
+    items[beforeContactIndex].world ||
+    items[beforeContactIndex].landmarks;
+
+  const kneeAngleBeforeContact = angle(
+    beforePoints[leadIndexes.hip],
+    beforePoints[leadIndexes.knee],
+    beforePoints[leadIndexes.ankle]
+  );
+
+  const kneeAngleAtContact = angle(
+    contactPoints[leadIndexes.hip],
+    contactPoints[leadIndexes.knee],
+    contactPoints[leadIndexes.ankle]
+  );
+
+  const firmingChange =
+    kneeAngleAtContact -
+    kneeAngleBeforeContact;
+
+  const straightnessScore =
+    clamp(
+      ((kneeAngleAtContact - 120) / 40) * 100,
+      0,
+      100
+    );
+
+  const firmingScore =
+    clamp(
+      ((firmingChange + 5) / 20) * 100,
+      0,
+      100
+    );
+
+  const score =
+    Math.round(
+      (
+        straightnessScore +
+        firmingScore
+      ) / 2
+    );
+
+  return {
+    kneeAngle:
+      Math.round(kneeAngleAtContact),
+
+    firmingChange:
+      Math.round(firmingChange),
+
+    score
+  };
+}
+
 function trimTrailingStillFrames(items) {
   if (items.length < 8) return items;
 
@@ -744,17 +883,17 @@ function calculateMetrics(items) {
       Math.max(...separationAngles)
     );
 
-  const timeToContact =
+    const timeToContact =
     estimateTimeToContact(source);
 
-    const metricScores = {
+  const frontLeg =
+    calculateFrontLegStability(source);
+
+  const metricScores = {
     knee: scoreNear(kneeBend, 105, 45),
 
-    rotation: scoreBelow(
-      Math.abs(105 - hipRotation),
-      15,
-      70
-    ),
+        frontLeg:
+      frontLeg.score,
 
     horizontal: scoreBelow(
       horizontalHip,
@@ -794,10 +933,20 @@ function calculateMetrics(items) {
       why:"Large up-and-down movement can redirect energy away from efficient rotation.",
       one:"Keep the belt line level from load through contact.",
       drill:"Chair-Height Tee Drill — 3 rounds of 5 swings."},
-    {key:"rotation", score:metricScores.rotation, title:"Limited hip rotation",
-      why:"Insufficient lower-half rotation may limit energy transfer into the bat.",
-      one:"Finish with the belt buckle turned toward the pitcher.",
-      drill:"Walk-Through Rotation Drill — 3 rounds of 5 swings."},
+       {
+      key: "frontLeg",
+      score: metricScores.frontLeg,
+      title: "Front leg needs to firm up",
+
+      why:
+        "The lead knee did not appear to create a firm base as the hitter approached contact.",
+
+      one:
+        "Land under control, then allow the front leg to firm while the back hip comes through.",
+
+      drill:
+        "Front-Leg Brace Drill — 3 rounds of 5 controlled swings."
+    },
         {
       key: "separation",
       score: metricScores.separation,
@@ -827,7 +976,16 @@ function calculateMetrics(items) {
     metricScores,
     metrics:[
       ["Knee Bend",`${kneeBend}°`,metricScores.knee,"Estimated average"],
-      ["Hip Rotation",`${hipRotation}°`,metricScores.rotation,"Estimated range"],
+            [
+        "Front-Leg Stability",
+        `${frontLeg.kneeAngle}°`,
+        metricScores.frontLeg,
+        `${
+          frontLeg.firmingChange >= 0
+            ? "+"
+            : ""
+        }${frontLeg.firmingChange}° firming near contact`
+      ],
       ["Horizontal Hip Movement",`${(horizontalHip*100).toFixed(0)}%`,metricScores.horizontal,"Relative to torso"],
       ["Vertical Hip Movement",`${(verticalHip*100).toFixed(0)}%`,metricScores.vertical,"Relative to torso"],
             [
