@@ -384,6 +384,11 @@
           );
         }
 
+        analyzedFrames =
+          trimFramesAfterSwing(
+            analyzedFrames
+          );
+
         const middleFrame =
           analyzedFrames[
             Math.floor(
@@ -539,6 +544,176 @@
       };
 
       return labels[name] || name;
+    }
+
+    function trimFramesAfterSwing(frames) {
+      if (frames.length < 12) {
+        return frames;
+      }
+
+      const wristMovement = [];
+
+      for (
+        let index = 1;
+        index < frames.length;
+        index++
+      ) {
+        const previousFrame =
+          frames[index - 1];
+
+        const currentFrame =
+          frames[index];
+
+        const previousPoints =
+          new Map(
+            previousFrame.keypoints.map(
+              point => [
+                point.name,
+                point
+              ]
+            )
+          );
+
+        const currentPoints =
+          new Map(
+            currentFrame.keypoints.map(
+              point => [
+                point.name,
+                point
+              ]
+            )
+          );
+
+        const previousLeft =
+          previousPoints.get("left_wrist");
+
+        const previousRight =
+          previousPoints.get("right_wrist");
+
+        const currentLeft =
+          currentPoints.get("left_wrist");
+
+        const currentRight =
+          currentPoints.get("right_wrist");
+
+        if (
+          !previousLeft ||
+          !previousRight ||
+          !currentLeft ||
+          !currentRight
+        ) {
+          continue;
+        }
+
+        const previousHands = {
+          x:
+            (
+              previousLeft.x +
+              previousRight.x
+            ) / 2,
+
+          y:
+            (
+              previousLeft.y +
+              previousRight.y
+            ) / 2
+        };
+
+        const currentHands = {
+          x:
+            (
+              currentLeft.x +
+              currentRight.x
+            ) / 2,
+
+          y:
+            (
+              currentLeft.y +
+              currentRight.y
+            ) / 2
+        };
+
+        const movement =
+          Math.hypot(
+            currentHands.x -
+              previousHands.x,
+
+            currentHands.y -
+              previousHands.y
+          );
+
+        wristMovement.push({
+          frameIndex: index,
+          movement
+        });
+      }
+
+      if (!wristMovement.length) {
+        return frames;
+      }
+
+      const peakMovement =
+        Math.max(
+          ...wristMovement.map(
+            item => item.movement
+          )
+        );
+
+      if (
+        !Number.isFinite(peakMovement) ||
+        peakMovement <= 0
+      ) {
+        return frames;
+      }
+
+      const activeThreshold =
+        peakMovement * 0.14;
+
+      const activeFrames =
+        wristMovement.filter(
+          item =>
+            item.movement >=
+            activeThreshold
+        );
+
+      if (!activeFrames.length) {
+        return frames;
+      }
+
+      const lastActiveFrame =
+        activeFrames[
+          activeFrames.length - 1
+        ].frameIndex;
+
+      /*
+       * Keep a few additional frames so the
+       * completed finish remains visible.
+       */
+      const finishBuffer = 5;
+
+      const finalFrameIndex =
+        Math.min(
+          frames.length,
+          lastActiveFrame +
+            finishBuffer +
+            1
+        );
+
+      /*
+       * Do not trim unless at least four
+       * unnecessary ending frames exist.
+       */
+      if (
+        frames.length -
+          finalFrameIndex < 4
+      ) {
+        return frames;
+      }
+
+      return frames.slice(
+        0,
+        finalFrameIndex
+      );
     }
 
     function calculateTorsoConfidence(frames) {
