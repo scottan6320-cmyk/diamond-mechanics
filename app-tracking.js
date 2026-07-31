@@ -779,7 +779,7 @@ function detectSwingWindow(items) {
   };
 }
 
-function calculateFrontLegStability(items) {
+function calculateFrontLegStability(items, swingWindow) {
   if (items.length < 5) {
     return {
       kneeAngle: 0,
@@ -789,12 +789,6 @@ function calculateFrontLegStability(items) {
     };
   }
 
-  /*
-   * Use the same launch and contact frames as every other
-   * swing observation.
-   */
-  const swingWindow =
-    detectSwingWindow(items);
 
   const contactIndex =
     swingWindow.contactIndex;
@@ -939,7 +933,7 @@ function calculateFrontLegStability(items) {
   };
 }
 
-function calculateHeadStability(items) {
+function calculateHeadStability(items, swingWindow) {
   if (items.length < 5) {
     return {
       horizontalMovement: 0,
@@ -949,14 +943,7 @@ function calculateHeadStability(items) {
     };
   }
 
-  /*
-   * All swing observations will eventually use this same
-   * launch-to-contact timeline.
-   */
-  const swingWindow =
-    detectSwingWindow(items);
-
-  const swingFrames =
+    const swingFrames =
     items.slice(
       swingWindow.launchIndex,
       swingWindow.contactIndex + 1
@@ -1208,10 +1195,17 @@ function trimTrailingStillFrames(items) {
 
 function calculateMetrics(items) {
   const activeItems =
-    trimTrailingStillFrames(items);
+  trimTrailingStillFrames(items);
 
-  const valid =
-    activeItems.filter(
+/*
+ * Every observation in the app uses the same
+ * estimated launch, contact and finish frames.
+ */
+const swingWindow =
+  detectSwingWindow(activeItems);
+
+const valid =
+  activeItems.filter(
       frame => frame.world
     );
 
@@ -1257,14 +1251,16 @@ function calculateMetrics(items) {
     );
 
   const frontLeg =
-    calculateFrontLegStability(
-      source
-    );
+  calculateFrontLegStability(
+    activeItems,
+    swingWindow
+  );
 
   const headStability =
-    calculateHeadStability(
-      activeItems
-    );
+  calculateHeadStability(
+    activeItems,
+    swingWindow
+  );
 
   const metricScores = {
     knee:
