@@ -627,90 +627,113 @@ function scoreBelow(value,good,bad){
   return Math.round(clamp(100 - ((value-good)/(bad-good))*100,0,100));
 }
 function detectSwingWindow(items) {
+  const finalIndex =
+    Math.max(
+      0,
+      items.length - 1
+    );
+
   if (items.length < 5) {
     return {
       launchIndex: 0,
-      contactIndex: Math.max(0, items.length - 1),
-      finishIndex: Math.max(0, items.length - 1),
+      heelPlantIndex: 0,
+      contactIndex: finalIndex,
+      finishIndex: finalIndex,
       confidence: 0,
+      heelPlantConfidence: 0,
+      leadAnkleIndex: null,
       frames: items
     };
   }
 
   /*
-   * Measure hand speed between every accepted frame.
-   * The midpoint between both wrists is more stable than
-   * relying on only one hand.
+   * HAND SPEED
+   *
+   * This remains our temporary contact estimate.
    */
-  const wristSpeeds = items.map((frame, index) => {
-    if (index === 0) {
-      return 0;
-    }
+  const wristSpeeds =
+    items.map(
+      (frame, index) => {
+        if (index === 0) {
+          return 0;
+        }
 
-    const previousPoints =
-      items[index - 1].landmarks;
+        const previousPoints =
+          items[index - 1].landmarks;
 
-    const currentPoints =
-      frame.landmarks;
+        const currentPoints =
+          frame.landmarks;
 
-    const previousWrists = midpoint(
-      previousPoints[15],
-      previousPoints[16]
+        const previousWrists =
+          midpoint(
+            previousPoints[15],
+            previousPoints[16]
+          );
+
+        const currentWrists =
+          midpoint(
+            currentPoints[15],
+            currentPoints[16]
+          );
+
+        const timeDifference =
+          frame.time -
+          items[index - 1].time;
+
+        if (
+          !Number.isFinite(
+            timeDifference
+          ) ||
+          timeDifference <= 0
+        ) {
+          return 0;
+        }
+
+        return (
+          distance2D(
+            currentWrists,
+            previousWrists
+          ) /
+          timeDifference
+        );
+      }
     );
 
-    const currentWrists = midpoint(
-      currentPoints[15],
-      currentPoints[16]
+  const peakHandSpeed =
+    Math.max(
+      ...wristSpeeds
     );
-
-    const timeDifference =
-      frame.time - items[index - 1].time;
-
-    if (
-      !Number.isFinite(timeDifference) ||
-      timeDifference <= 0
-    ) {
-      return 0;
-    }
-
-    return (
-      distance2D(
-        currentWrists,
-        previousWrists
-      ) / timeDifference
-    );
-  });
-
-  const peakSpeed =
-    Math.max(...wristSpeeds);
 
   if (
-    !Number.isFinite(peakSpeed) ||
-    peakSpeed <= 0
+    !Number.isFinite(
+      peakHandSpeed
+    ) ||
+    peakHandSpeed <= 0
   ) {
     return {
       launchIndex: 0,
-      contactIndex: items.length - 1,
-      finishIndex: items.length - 1,
+      heelPlantIndex: 0,
+      contactIndex: finalIndex,
+      finishIndex: finalIndex,
       confidence: 0,
+      heelPlantConfidence: 0,
+      leadAnkleIndex: null,
       frames: items
     };
   }
 
-  /*
-   * The fastest hand movement is our current estimate
-   * of the contact portion of the swing.
-   */
   const contactIndex =
-    wristSpeeds.indexOf(peakSpeed);
+    wristSpeeds.indexOf(
+      peakHandSpeed
+    );
 
   /*
-   * Launch begins shortly before the hands clearly
-   * accelerate. Requiring consecutive moving frames helps
-   * prevent one noisy landmark jump from starting the swing.
+   * TEMPORARY LAUNCH ESTIMATE
+   *
+   * Launch begins shortly before clear hand acceleration.
    */
   const launchThreshold =
-    peakSpeed * 0.18;
+    peakHandSpeed * 0.18;
 
   let firstMovingIndex = -1;
 
@@ -726,8 +749,10 @@ function detectSwingWindow(items) {
       wristSpeeds[index + 1] ?? 0;
 
     if (
-      currentSpeed >= launchThreshold &&
-      nextSpeed >= launchThreshold
+      currentSpeed >=
+        launchThreshold &&
+      nextSpeed >=
+        launchThreshold
     ) {
       firstMovingIndex = index;
       break;
@@ -742,22 +767,241 @@ function detectSwingWindow(items) {
         )
       : Math.max(
           0,
-          contactIndex - 4
+          contactIndex - 5
         );
 
   /*
-   * Keep a small number of frames after estimated contact.
-   * Later observations can use this to evaluate extension
-   * and the beginning of the finish.
+   * IDENTIFY THE STRIDE / LEAD ANKLE
+   *
+   * The stride foot should show more screen movement
+   * between the early stance frames and estimated contact.
    */
+  const baselineFrameCount =
+    Math.min(
+      4,
+      Math.max(
+        1,
+        contactIndex
+      )
+    );
+
+  const averagePoint = (
+    landmarkIndex
+  ) => {
+    const points =
+      items
+        .slice(
+          0,
+          baselineFrameCount
+        )
+        .map(
+          frame =>
+            frame.landmarks[
+              landmarkIndex
+            ]
+        )
+        .filter(Boolean);
+
+    if (!points.length) {
+      return null;
+    }
+
+    return {
+      x:
+        points.reduce(
+          (sum, point) =>
+            sum + point.x,
+          0
+        ) / points.length,
+
+      y:
+        points.reduce(
+          (sum, point) =>
+            sum + point.y,
+          0
+        ) / points.length
+    };
+  };
+
+  const leftBaseline =
+    averagePoint(27);
+
+  const rightBaseline =
+    averagePoint(28);
+
+  const contactPoints =
+    items[contactIndex]
+      .landmarks;
+
+  const leftTravel =
+    leftBaseline &&
+    contactPoints[27]
+      ? distance2D(
+          leftBaseline,
+          contactPoints[27]
+        )
+      : 0;
+
+  const rightTravel =
+    rightBaseline &&
+    contactPoints[28]
+      ? distance2D(
+          rightBaseline,
+          contactPoints[28]
+        )
+      : 0;
+
+  const leadAnkleIndex =
+    leftTravel >= rightTravel
+      ? 27
+      : 28;
+
+  /*
+   * STRIDE-FOOT SPEED
+   *
+   * Heel plant is estimated when the stride foot has clearly
+   * moved, then rapidly settles before estimated contact.
+   */
+  const ankleSpeeds =
+    items.map(
+      (frame, index) => {
+        if (index === 0) {
+          return 0;
+        }
+
+        const previousAnkle =
+          items[index - 1]
+            .landmarks[
+              leadAnkleIndex
+            ];
+
+        const currentAnkle =
+          frame.landmarks[
+            leadAnkleIndex
+          ];
+
+        if (
+          !previousAnkle ||
+          !currentAnkle
+        ) {
+          return 0;
+        }
+
+        const timeDifference =
+          frame.time -
+          items[index - 1].time;
+
+        if (
+          !Number.isFinite(
+            timeDifference
+          ) ||
+          timeDifference <= 0
+        ) {
+          return 0;
+        }
+
+        return (
+          distance2D(
+            currentAnkle,
+            previousAnkle
+          ) /
+          timeDifference
+        );
+      }
+    );
+
+  const strideSearchEnd =
+    Math.max(
+      2,
+      contactIndex
+    );
+
+  const peakStrideSpeed =
+    Math.max(
+      ...ankleSpeeds.slice(
+        0,
+        strideSearchEnd + 1
+      )
+    );
+
+  const movingThreshold =
+    peakStrideSpeed * 0.28;
+
+  const settledThreshold =
+    peakStrideSpeed * 0.12;
+
+  let strideWasMoving = false;
+  let heelPlantIndex = -1;
+
+  for (
+    let index = 1;
+    index < contactIndex;
+    index++
+  ) {
+    const speed =
+      ankleSpeeds[index];
+
+    const nextSpeed =
+      ankleSpeeds[index + 1] ??
+      speed;
+
+    if (
+      speed >= movingThreshold
+    ) {
+      strideWasMoving = true;
+    }
+
+    /*
+     * Require the foot to settle for consecutive frames.
+     * This prevents one noisy low-speed frame from being
+     * labeled as heel plant.
+     */
+    if (
+      strideWasMoving &&
+      speed <= settledThreshold &&
+      nextSpeed <= settledThreshold
+    ) {
+      heelPlantIndex = index;
+      break;
+    }
+  }
+
+  /*
+   * Safe fallback:
+   * If foot settling was not detected, estimate heel plant
+   * shortly before contact rather than using the entire load.
+   */
+  if (heelPlantIndex < 0) {
+    heelPlantIndex =
+      Math.max(
+        launchIndex,
+        contactIndex - 4
+      );
+  }
+
+  /*
+   * Heel plant must occur before contact.
+   */
+  heelPlantIndex =
+    clamp(
+      heelPlantIndex,
+      launchIndex,
+      Math.max(
+        launchIndex,
+        contactIndex - 1
+      )
+    );
+
   const finishIndex =
     Math.min(
-      items.length - 1,
+      finalIndex,
       contactIndex + 3
     );
 
   const swingFrameCount =
-    contactIndex - launchIndex + 1;
+    contactIndex -
+    launchIndex +
+    1;
 
   const confidence =
     swingFrameCount >= 4 &&
@@ -765,11 +1009,20 @@ function detectSwingWindow(items) {
       ? 100
       : 50;
 
+  const heelPlantConfidence =
+    peakStrideSpeed > 0 &&
+    strideWasMoving
+      ? 85
+      : 45;
+
   return {
     launchIndex,
+    heelPlantIndex,
     contactIndex,
     finishIndex,
     confidence,
+    heelPlantConfidence,
+    leadAnkleIndex,
 
     frames:
       items.slice(
@@ -778,7 +1031,6 @@ function detectSwingWindow(items) {
       )
   };
 }
-
 function calculateFrontLegStability(items, swingWindow) {
   if (items.length < 5) {
     return {
@@ -852,11 +1104,12 @@ function calculateFrontLegStability(items, swingWindow) {
    * Compare the lead knee shortly after launch with the
    * same knee at the estimated contact frame.
    */
+    /*
+   * Compare the lead leg at heel plant with the
+   * same leg near estimated contact.
+   */
   const beforeContactIndex =
-    Math.max(
-      swingWindow.launchIndex,
-      contactIndex - 3
-    );
+    swingWindow.heelPlantIndex;
 
   const beforePoints =
     items[beforeContactIndex].world ||
@@ -943,9 +1196,14 @@ function calculateHeadStability(items, swingWindow) {
     };
   }
 
-    const swingFrames =
+      /*
+   * Movement during the load is allowed.
+   * Head stability is evaluated after heel plant,
+   * when the hitter begins delivering the swing.
+   */
+  const swingFrames =
     items.slice(
-      swingWindow.launchIndex,
+      swingWindow.heelPlantIndex,
       swingWindow.contactIndex + 1
     );
 
