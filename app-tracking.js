@@ -1694,21 +1694,116 @@ function renderReport(a) {
   const finishTime =
     frames[timeline.finishIndex]?.time ?? 0;
 
-  document.getElementById("summary").textContent =
-    `The swing was analyzed using ${frames.length} accepted tracking frames. ` +
-    `Your strongest opportunity for improvement is "${a.issue.title}". ` +
-    `Developer timeline — Launch: ${launchTime.toFixed(2)}s | ` +
-    `Heel Plant: ${heelPlantTime.toFixed(2)}s | ` +
-    `Contact: ${contactTime.toFixed(2)}s | ` +
-    `Finish: ${finishTime.toFixed(2)}s | ` +
-    `Heel Plant Confidence: ${timeline.heelPlantConfidence}%`;
+    const summaryEl =
+    document.getElementById(
+      "summary"
+    );
+
+  summaryEl.innerHTML = `
+    The swing was analyzed using
+    ${frames.length} accepted tracking frames.
+    Your strongest opportunity for improvement is
+    "${a.issue.title}".
+
+    <br><br>
+
+    <strong>Developer Timeline</strong>
+
+    <br>
+
+    <button
+      type="button"
+      class="secondary"
+      data-jump-time="${launchTime}"
+    >
+      Launch — ${launchTime.toFixed(2)}s
+    </button>
+
+    <button
+      type="button"
+      class="secondary"
+      data-jump-time="${heelPlantTime}"
+    >
+      Heel Plant — ${heelPlantTime.toFixed(2)}s
+    </button>
+
+    <button
+      type="button"
+      class="secondary"
+      data-jump-time="${contactTime}"
+    >
+      Contact — ${contactTime.toFixed(2)}s
+    </button>
+
+    <button
+      type="button"
+      class="secondary"
+      data-jump-time="${finishTime}"
+    >
+      Finish — ${finishTime.toFixed(2)}s
+    </button>
+
+    <br><br>
+
+    Heel Plant Confidence:
+    <strong>
+      ${timeline.heelPlantConfidence}%
+    </strong>
+  `;
+
+  /*
+   * Developer buttons allow us to inspect exactly
+   * which video frame the detector selected for
+   * each phase of the swing.
+   */
+  summaryEl
+    .querySelectorAll(
+      "[data-jump-time]"
+    )
+    .forEach(button => {
+      button.addEventListener(
+        "click",
+        () => {
+          const jumpTime =
+            Number(
+              button.dataset.jumpTime
+            );
+
+          if (
+            !Number.isFinite(
+              jumpTime
+            )
+          ) {
+            return;
+          }
+
+          video.pause();
+
+          video.currentTime =
+            Math.min(
+              jumpTime,
+              Math.max(
+                0,
+                video.duration - 0.001
+              )
+            );
+
+          drawNearestFrame(
+            jumpTime
+          );
+
+          statusEl.textContent =
+            `Developer review: ${button.textContent.trim()}`;
+        }
+      );
+    });
 
   const lowestScore =
     Math.min(
       ...a.metrics.map(
         metric => metric[2]
       )
-    );;
+    );
 
   metricsEl.innerHTML =
     a.metrics.map(
