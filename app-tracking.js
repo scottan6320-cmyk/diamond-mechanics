@@ -1606,10 +1606,12 @@ const valid =
       a.score - b.score
   );
 
-  return {
+    return {
     overall,
 
     metricScores,
+
+    swingWindow,
 
     metrics: [
       [
@@ -1619,7 +1621,7 @@ const valid =
 
         metricScores.head,
 
-        `${headStability.horizontalMovement}% horizontal and ${headStability.verticalMovement}% vertical movement from launch through contact`
+        `${headStability.horizontalMovement}% horizontal and ${headStability.verticalMovement}% vertical movement from heel plant through contact`
       ],
 
       [
@@ -1643,7 +1645,7 @@ const valid =
           frontLeg.firmingChange >= 0
             ? "+"
             : ""
-        }${frontLeg.firmingChange}° firming approaching contact`
+        }${frontLeg.firmingChange}° firming from heel plant toward contact`
       ]
     ],
 
@@ -1674,17 +1676,39 @@ function renderReport(a) {
   document.getElementById("overallScore").textContent = a.overall;
   document.querySelector(".scoreRing").style.background =
     `conic-gradient(${a.overall>=75?"#45c86c":a.overall>=55?"#ff9827":"#ff4545"} ${a.overall*3.6}deg,#35434d 0deg)`;
-  document.getElementById("headline").textContent =
+    document.getElementById("headline").textContent =
     `Primary Focus: ${a.issue.title}`;
-   document.getElementById("summary").textContent =
-    `The swing was analyzed using ${frames.length} accepted tracking frames. Your strongest opportunity for improvement is "${a.issue.title}".`;
 
-   const lowestScore =
+  const timeline =
+    a.swingWindow;
+
+  const launchTime =
+    frames[timeline.launchIndex]?.time ?? 0;
+
+  const heelPlantTime =
+    frames[timeline.heelPlantIndex]?.time ?? 0;
+
+  const contactTime =
+    frames[timeline.contactIndex]?.time ?? 0;
+
+  const finishTime =
+    frames[timeline.finishIndex]?.time ?? 0;
+
+  document.getElementById("summary").textContent =
+    `The swing was analyzed using ${frames.length} accepted tracking frames. ` +
+    `Your strongest opportunity for improvement is "${a.issue.title}". ` +
+    `Developer timeline — Launch: ${launchTime.toFixed(2)}s | ` +
+    `Heel Plant: ${heelPlantTime.toFixed(2)}s | ` +
+    `Contact: ${contactTime.toFixed(2)}s | ` +
+    `Finish: ${finishTime.toFixed(2)}s | ` +
+    `Heel Plant Confidence: ${timeline.heelPlantConfidence}%`;
+
+  const lowestScore =
     Math.min(
       ...a.metrics.map(
         metric => metric[2]
       )
-    );
+    );;
 
   metricsEl.innerHTML =
     a.metrics.map(
